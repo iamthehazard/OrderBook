@@ -12,24 +12,7 @@ using json = nlohmann::json;
 //OrderExecuted: {"exchTime":1725413100000000,"execQty":50,"leavesQty":0,"orderId":78849,"recvTime":1725413100693106,"symbol":"F"}
 //OrderExecuted: {"exchTime":1725413100000000,"execQty":50,"leavesQty":10,"orderId":45517,"recvTime":1725413100693106,"symbol":"F"}
 
-/*void readLine() {
-    std::string type, data;
-    std::cin >> type >> data;
-    if (type == "NewOrder:") {
-
-    }
-    if (type == "OrderCanceled:") {
-
-    }
-    if (type == "OrderExecuted:") {
-
-    }
-    if (type == "Trade:") {
-
-    }
-}*/
-
-const int PRICE_FACTOR = 10000; //should be divisible by 2000 and a power of 10
+const int PRICE_FACTOR = 10000; //should be divisible by 2000
 
 std::map<std::string, bool> side = {
     {"S", 1},
@@ -43,7 +26,7 @@ struct Order {
     int qty;
     bool isAsk;
     std::string symbol;
-    std::list<Order>::iterator it;
+    //std::list<Order>::iterator it;
 };
 
 struct PriceLevel {
@@ -71,6 +54,7 @@ std::ostream& operator<<(std::ostream& stream, const std::list<Order>& orders) {
 
 std::ostream& operator<<(std::ostream& stream, const PriceLevel pl) {
     stream << "{price:" << (double) pl.price / PRICE_FACTOR << ",volume:" << pl.volume << ",count:" << pl.count << ",orders:" << pl.orders << "}";
+    return stream;
 }
 
 class Instrument final {
@@ -85,18 +69,17 @@ class Instrument final {
             auto pl = getLevelPointer(order.price, order.isAsk);
             pl->price = order.price;
             pl->orders.push_back(order);
-            std::prev(pl->orders.end())->it = std::prev(pl->orders.end());
-            order.it = std::prev(pl->orders.end());
             pl->volume += order.qty;
             pl->count++;
 
-            ordersById[order.id] = order;
+            ordersById[order.id] = std::prev(pl->orders.end());;
         }
 
-        void removeOrder(Order order) {
+        void removeOrder(std::list<Order>::iterator it) {
+            auto order = *it;
             auto pl = getLevelPointer(order.price, order.isAsk);
 
-            pl->orders.erase(order.it);
+            pl->orders.erase(it);
             if (pl->orders.empty()) {
                 if (order.isAsk) asks.erase(order.price);
                 else bids.erase(order.price);
@@ -106,28 +89,28 @@ class Instrument final {
 
             ordersById.erase(order.id);
         }
-
+        
         void removeOrder(int id) {
-            removeOrder(getOrderById(id));
+            auto it = getOrderPtr(id);
+            removeOrder(it);
         }
 
-        void executeOrder(Order order, int execQty) {
-            if (order.qty == execQty) removeOrder(order);
+        void executeOrder(std::list<Order>::iterator it, int execQty) {
+            auto order = *it;
+            if (order.qty == execQty) removeOrder(order.id);
             else {
-                order.it->qty -= execQty;
-                ordersById[order.id].qty -= execQty;
+                it->qty -= execQty;
                 getLevelPointer(order.price, order.isAsk)->volume -= execQty;
             }
         }
 
-        void executeOrder(int id, int qty) {
-            executeOrder(getOrderById(id), qty);
+        void executeOrder(int id, int execQty) {
+            auto it = getOrderPtr(id);
+            executeOrder(it, execQty);
         }
 
         Order getOrderById(int id) {
-            auto it = ordersById.find(id);
-            if (it == ordersById.end()) throw std::invalid_argument("No order with id " + std::to_string(id));
-            return it->second;
+            return *getOrderPtr(id);
         }
 
         PriceLevel getLevelByIndex(std::size_t index, bool isAsk) {
@@ -169,7 +152,7 @@ class Instrument final {
         }
     private:
         std::string symbol;
-        std::unordered_map<int, Order> ordersById;
+        std::unordered_map<int, std::list<Order>::iterator> ordersById;
         std::map<int, PriceLevel> asks;
         std::map<int, PriceLevel, std::greater<int>> bids;
 
@@ -179,6 +162,12 @@ class Instrument final {
             } else {
                 return &bids[price];
             }
+        }
+
+        std::list<Order>::iterator getOrderPtr(int id) {
+            auto it = ordersById.find(id);
+            if (it == ordersById.end()) throw std::invalid_argument("No order with id " + std::to_string(id));
+            return it->second;
         }
 };
 
@@ -198,7 +187,7 @@ int main() {
         instruments[{static_cast<char>('A' + i)}] = Instrument({static_cast<char>('A' + i)});
     }
 
-    for (int i = 0; i < 241124; i++) {
+    for (int i = 0; i < 100000; i++) {
         std::string type, data;
         std::cin >> type >> data;
         auto j = json::parse(data);
@@ -229,16 +218,7 @@ int main() {
 
     std::cout << (double) instruments["B"].getBestOffer(side["B"]) / PRICE_FACTOR << " " << (double) instruments["B"].getBestOffer(side["S"]) / PRICE_FACTOR << "\n";
     std::cout << instruments["J"].getLevelByIndex(0, side["B"]).price << " " << instruments["J"].getLevelByIndex(0, side["B"]).volume << " " << instruments["J"].getLevelByIndex(0, side["B"]).count << "\n";
-    std::cout << instruments["J"].getLevelByPrice(1160650, side["B"]) << "\n";
-    std::cout << instruments["J"].getOrderById(2893934) << "\n";
+    //std::cout << instruments["J"].getLevelByPrice(1160650, side["B"]) << "\n";
+    //std::cout << instruments["J"].getOrderById(2893934) << "\n";
     std::cout << ((float) clock() - t)/CLOCKS_PER_SEC << "\n";
 }
-
-//some library to read json
-//order books can be priority queues with some additional info stored
-//or maybe some map from price to a map of order id -> data
-//map (or vector) from ids to order data
-//<100ms latency
-//maps have to be ordered differently by side
-//store price level data as linkedlist or map
-
