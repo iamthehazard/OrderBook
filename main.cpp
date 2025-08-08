@@ -110,11 +110,11 @@ class Instrument final {
             executeOrder(it, execQty);
         }
 
-        Order& getOrderById(int id) {
+        const Order& getOrderById(int id) {
             return *getOrderPtr(id);
         }
 
-        PriceLevel getLevelByIndex(std::size_t index, bool isAsk) {
+        const PriceLevel& getLevelByIndex(std::size_t index, bool isAsk) {
             if (isAsk) {
                 if (asks.size() > index) {
                     auto it = asks.begin();
@@ -132,7 +132,7 @@ class Instrument final {
             }
         }
 
-        PriceLevel getLevelByPrice(int price, bool isAsk) {
+        const PriceLevel& getLevelByPrice(int price, bool isAsk) {
             if (isAsk) {
                 auto it = asks.find(price);
                 if (it == asks.end()) throw std::invalid_argument{"No ask level at " + std::to_string((double) price / PRICE_FACTOR)};
@@ -182,7 +182,7 @@ int main() {
     //std::string type, data;
     //std::cin >> type >> data;
 
-    clock_t t = clock();
+    auto start = std::chrono::steady_clock::now();
 
     for (int i = 0; i < 26; i++) {
         instruments[{static_cast<char>('A' + i)}] = Instrument({static_cast<char>('A' + i)});
@@ -216,9 +216,12 @@ int main() {
         }
     }
 
+    //just for sanity check before I write tests (not actual tests)
     std::cout << (double) instruments["B"].getBestOffer(side["B"]) / PRICE_FACTOR << " " << (double) instruments["B"].getBestOffer(side["S"]) / PRICE_FACTOR << "\n";
     std::cout << instruments["J"].getLevelByIndex(0, side["B"]).price << " " << instruments["J"].getLevelByIndex(0, side["B"]).volume << " " << instruments["J"].getLevelByIndex(0, side["B"]).count << "\n";
     //std::cout << instruments["J"].getLevelByPrice(1160650, side["B"]) << "\n";
     //std::cout << instruments["J"].getOrderById(2893934) << "\n";
-    std::cout << ((float) clock() - t)/CLOCKS_PER_SEC << "\n";
+    
+    auto end = std::chrono::steady_clock::now();
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "\n";
 }
