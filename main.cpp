@@ -26,14 +26,15 @@ struct Order {
     int qty;
     bool isAsk;
     std::string symbol;
-    //std::list<Order>::iterator it;
 };
+using Orders = std::list<Order>;
+using OrderRef = Orders::iterator;
 
 struct PriceLevel {
     int price;
     int volume = 0;
     int count = 0; //# of orders
-    std::list<Order> orders;
+    Orders orders;
 };
 
 std::ostream& operator<<(std::ostream& stream, const Order& o) {
@@ -41,7 +42,7 @@ std::ostream& operator<<(std::ostream& stream, const Order& o) {
     return stream;
 }
 
-std::ostream& operator<<(std::ostream& stream, const std::list<Order>& orders) {
+std::ostream& operator<<(std::ostream& stream, const Orders& orders) {
     if (orders.empty()) {
         stream << "[]";
     } else {
@@ -59,33 +60,32 @@ std::ostream& operator<<(std::ostream& stream, const PriceLevel pl) {
 
 class Instrument final {
     public:
-        Instrument() {}
+        Instrument() = default;
 
-        Instrument(std::string sym) {
+        explicit Instrument(std::string const& sym) {
             symbol = sym;
         }
 
-        void addOrder(Order order) {
+        void addOrder(Order const& order) {
             auto pl = getLevelPointer(order.price, order.isAsk);
             pl->price = order.price;
-            pl->orders.push_back(order);
+            ordersById[order.id] = pl->orders.insert(pl->orders.end(), order);
             pl->volume += order.qty;
             pl->count++;
-
-            ordersById[order.id] = std::prev(pl->orders.end());;
         }
 
-        void removeOrder(std::list<Order>::iterator it) {
-            auto order = *it;
+        void removeOrder(Orders::iterator it) {
+            auto const& order = *it;
             auto pl = getLevelPointer(order.price, order.isAsk);
 
-            pl->orders.erase(it);
-            if (pl->orders.empty()) {
+            if (pl->orders.size() == 1) {
                 if (order.isAsk) asks.erase(order.price);
                 else bids.erase(order.price);
+                return;
             }
             pl->volume -= order.qty;
             pl->count--;
+            pl->orders.erase(it);
 
             ordersById.erase(order.id);
         }
@@ -95,8 +95,9 @@ class Instrument final {
             removeOrder(it);
         }
 
-        void executeOrder(std::list<Order>::iterator it, int execQty) {
-            auto order = *it;
+        void executeOrder(Orders::iterator it, int execQty) {
+            auto const& order = *it;
+            if (order.qty < execQty) throw std::invalid_argument{"execQty " + std::to_string(execQty) + " greater than order qty " + std::to_string(order.qty)};
             if (order.qty == execQty) removeOrder(order.id);
             else {
                 it->qty -= execQty;
@@ -109,7 +110,7 @@ class Instrument final {
             executeOrder(it, execQty);
         }
 
-        Order getOrderById(int id) {
+        Order& getOrderById(int id) {
             return *getOrderPtr(id);
         }
 
@@ -152,7 +153,7 @@ class Instrument final {
         }
     private:
         std::string symbol;
-        std::unordered_map<int, std::list<Order>::iterator> ordersById;
+        std::unordered_map<int, Orders::iterator> ordersById;
         std::map<int, PriceLevel> asks;
         std::map<int, PriceLevel, std::greater<int>> bids;
 
@@ -164,7 +165,7 @@ class Instrument final {
             }
         }
 
-        std::list<Order>::iterator getOrderPtr(int id) {
+        Orders::iterator getOrderPtr(int id) {
             auto it = ordersById.find(id);
             if (it == ordersById.end()) throw std::invalid_argument("No order with id " + std::to_string(id));
             return it->second;
@@ -176,7 +177,7 @@ std::unordered_map<std::string, Instrument> instruments;
 int main() {
     std::ios::sync_with_stdio(false);
 
-    std::freopen("../events.in", "r", stdin);
+    std::freopen("events.in", "r", stdin);
     //std::pair<std::string, std::string> data[10005]; //temp
     //std::string type, data;
     //std::cin >> type >> data;
@@ -204,15 +205,14 @@ int main() {
                 side[j["side"].template get<std::string>()],
                 j["symbol"].template get<std::string>()
             });
-        }
-        if (type == "OrderCanceled:") {
+        } else if (type == "OrderCanceled:") {
             instrument->removeOrder(j["orderId"].template get<int>());
-        }
-        if (type == "OrderExecuted:") {
+        } else if (type == "OrderExecuted:") {
             instrument->executeOrder(j["orderId"].template get<int>(), j["execQty"].template get<int>());
-        }
-        if (type == "Trade:") {
+        } else if (type == "Trade:") {
             //don't have to do anything yet
+        } else {
+            std::cerr << "Invalid type for message " << type << " " << data << "\n";
         }
     }
 
