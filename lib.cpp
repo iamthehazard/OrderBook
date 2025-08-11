@@ -162,6 +162,7 @@ class Instrument final {
 
             if (pl->orders.size() == 1) {
                 bookSides[order.side].priceLevels.erase(order.price);
+                ordersById.erase(order.id);
                 return;
             }
             pl->volume -= order.qty;
