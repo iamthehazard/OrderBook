@@ -2,6 +2,7 @@
 #include <iostream>
 #include <list>
 #include <unordered_map>
+#include <ext/pb_ds/assoc_container.hpp>
 
 using json = nlohmann::json;
 
@@ -165,6 +166,7 @@ class Instrument final {
     private: 
         std::string symbol;
         std::unordered_map<int, Orders::iterator> ordersById;
+        //__gnu_pbds::gp_hash_table<int, Orders::iterator> ordersById;
         sideBook bookSides[2] = {
             sideBook(B),
             sideBook(S)
@@ -217,7 +219,7 @@ int main() {
             instrument->addOrder({
                 j["orderId"].template get<int>(),
                 j["exchTime"].template get<long long>(),
-                (int)lround(j["price"].template get<double>() * PRICE_FACTOR), //test
+                (int)lround(j["price"].template get<double>() * PRICE_FACTOR),
                 j["qty"].template get<int>(),
                 sideMap.at(j["side"].template get<std::string>()),
                 j["symbol"].template get<std::string>()
@@ -233,12 +235,16 @@ int main() {
         }
     }
 
-    //just for sanity check before I write tests (not actual tests)
+    //just for sanity check
     //std::cout << (double) instruments["B"].getBestOffer(B) / PRICE_FACTOR << " " << (double) instruments["B"].getBestOffer(S) / PRICE_FACTOR << "\n";
     //std::cout << instruments["J"].getLevelByIndex(0, B).price << " " << instruments["J"].getLevelByIndex(0, S).volume << " " << instruments["J"].getLevelByIndex(0, S).count << "\n";
     //std::cout << instruments["J"].getLevelByPrice(1160650, side["B"]) << "\n";
     //std::cout << instruments["J"].getOrderById(2893934) << "\n";
     
     auto end = std::chrono::steady_clock::now();
-    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms \n";
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " ms \n";
+    //ROUGH BENCHMARKS:
+    //note that reading 100k lines takes ~3500ms
+    //reading 100k lines AND getting components takes ~3800ms
+    //so actual order book operations only take ~200ms
 }
