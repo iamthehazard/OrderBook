@@ -53,7 +53,6 @@ bool operator==(const Order& o1, const Order& o2) {
 
 bool operator!=(const Order& o1, const Order& o2) {
     return !(o1 == o2);
-
 }
 
 struct PriceLevel {
@@ -156,7 +155,7 @@ class Instrument final {
             pl->count++;
         }
 
-        void removeOrder(Orders::iterator it) {
+        void removeOrder(Orders::iterator it) { //honestly can be private
             auto const& order = *it;
             auto pl = getLevelPointer(order.price, order.side);
 
