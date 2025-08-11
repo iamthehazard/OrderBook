@@ -139,8 +139,8 @@ TEST_CASE("adding") {
         1,
         {o1}
     };
+    ins.addOrder(o1);
     SECTION("add one order") {
-        ins.addOrder(o1);
 
         REQUIRE_NOTHROW(ins.getOrderById(0)); //basically checking that getOrderPtr doesn't throw anything
         REQUIRE(ins.getOrderById(0) == o1);
@@ -166,9 +166,8 @@ TEST_CASE("adding") {
         1,
         {o2}
     };
+    ins.addOrder(o2);
     SECTION("add another order, diff price") {
-        ins.addOrder(o1);
-        ins.addOrder(o2);
         REQUIRE_NOTHROW(ins.getLevelByIndex(1, S));
         REQUIRE(ins.getLevelByIndex(0, S) == pl2);
         REQUIRE(ins.getLevelByIndex(1, S) == pl1);
@@ -191,10 +190,8 @@ TEST_CASE("adding") {
         2,
         {o1, o3}
     };
+    ins.addOrder(o3);
     SECTION("add another order, same price") {
-        ins.addOrder(o1);
-        ins.addOrder(o2);
-        ins.addOrder(o3);
         REQUIRE_NOTHROW(ins.getLevelByIndex(1, S));
         REQUIRE_THROWS(ins.getLevelByIndex(2, S));
         
@@ -212,14 +209,61 @@ TEST_CASE("adding") {
         B,
         "A"
     };
+    ins.addOrder(o4);
     SECTION("add order to other side") {
-        ins.addOrder(o1);
-        ins.addOrder(o2);
-        ins.addOrder(o3);
-        ins.addOrder(o4);
         REQUIRE_THROWS(ins.getLevelByIndex(2, S));
         REQUIRE_NOTHROW(ins.getLevelByIndex(0, B));
         REQUIRE_THROWS(ins.getLevelByPrice(196020, S));
         REQUIRE_NOTHROW(ins.getLevelByPrice(196020, B));
+    }
+}
+
+TEST_CASE("removing") {
+    Instrument ins("A");
+    Order o1 = {
+        0,
+        4,
+        195900,
+        50,
+        S,
+        "A"
+    };
+    Order o2 = {
+        581,
+        4010293,
+        195900,
+        20,
+        S,
+        "A"
+    };
+    PriceLevel pl1 = {
+        195900,
+        50,
+        1,
+        {o1}
+    };
+    
+    SECTION("remove order w/ >1 remaining") {
+        ins.addOrder(o2);
+        ins.addOrder(o1);
+        REQUIRE_NOTHROW(ins.removeOrder(o2.id));
+        REQUIRE(ins.getLevelByIndex(0, S) == pl1);
+        REQUIRE_THROWS(ins.removeOrder(o2.id));
+        REQUIRE_THROWS(ins.getOrderById(o2.id));
+    }
+
+    SECTION("remove last order") {
+        ins.addOrder(o1);
+        REQUIRE_NOTHROW(ins.removeOrder(o1.id));
+        REQUIRE_THROWS(ins.getLevelByIndex(0, S)); //level should be deleted
+        REQUIRE_THROWS(ins.removeOrder(o1.id));
+        REQUIRE_THROWS(ins.getOrderById(o1.id));
+    }
+
+    SECTION("removing nonexistent orders") {
+        ins.addOrder(o1);
+        ins.addOrder(o2);
+        REQUIRE_THROWS(ins.removeOrder(195));
+        REQUIRE_THROWS(ins.removeOrder(130496));
     }
 }
