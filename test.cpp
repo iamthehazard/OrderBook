@@ -267,3 +267,60 @@ TEST_CASE("removing") {
         REQUIRE_THROWS(ins.removeOrder(130496));
     }
 }
+
+TEST_CASE("executing") {
+    Instrument ins("A");
+    Order o1 = {
+        0,
+        4,
+        195900,
+        50,
+        S,
+        "A"
+    };
+    Order o2 = {
+        0,
+        4,
+        195900,
+        20,
+        S,
+        "A"
+    };
+    PriceLevel pl1 = {
+        195900,
+        50,
+        1,
+        {o1}
+    };
+    PriceLevel pl2 = {
+        195900,
+        20,
+        1,
+        {o2}
+    };
+    SECTION("partial execution") {
+        ins.addOrder(o1);
+        ins.executeOrder(0, 30);
+        
+        REQUIRE(ins.getOrderById(0) == o2);
+        REQUIRE(ins.getLevelByIndex(0, S) == pl2);
+    }
+
+    SECTION("complete execution") {
+        ins.addOrder(o1);
+        ins.executeOrder(0, 50);
+        
+        REQUIRE_THROWS(ins.getOrderById(0));
+        REQUIRE_THROWS(ins.getLevelByIndex(0, S));
+    }
+
+    SECTION("execution qty too large") {
+        ins.addOrder(o1);
+        REQUIRE_THROWS(ins.executeOrder(0, 60));
+    }
+
+    SECTION("execution id doesn't exist") {
+        ins.addOrder(o1);
+        REQUIRE_THROWS(ins.executeOrder(51, 30));
+    }
+}
