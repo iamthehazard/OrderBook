@@ -1,6 +1,7 @@
 #include "include/json.hpp"
 #include <iostream>
 #include <list>
+#include <sstream>
 #include <unordered_map>
 #include <ext/pb_ds/assoc_container.hpp>
 
@@ -47,24 +48,43 @@ struct PriceLevel {
     Orders orders;
 };
 
+std::string to_string(const Order& o) {
+    std::ostringstream os;
+    os << "{exchTime:" << o.exchTime << ",id:" << o.id << ",price:" << (double) o.price / PRICE_FACTOR << ",qty:" << o.qty << ",side:" << to_string(o.side) << ",symbol:" << o.symbol << "}";
+    return os.str();
+}
+
 std::ostream& operator<<(std::ostream& stream, const Order& o) {
-    stream << "{exchTime:" << o.exchTime << ",id:" << o.id << ",price:" << (double) o.price / PRICE_FACTOR << ",qty:" << o.qty << ",side:" << to_string(o.side) << ",symbol:" << o.symbol << "}";
+    stream << to_string(o);
     return stream;
 }
 
-std::ostream& operator<<(std::ostream& stream, const Orders& orders) {
+std::string to_string(const Orders& orders) {
+    std::ostringstream os;
     if (orders.empty()) {
-        stream << "[]";
+        os << "[]";
     } else {
-        stream << "[\n";
-        for (const auto& o : orders) stream << "\t" << o << "\n";
-        stream << "]";
+        os << "[\n";
+        for (const auto& o : orders) os << "\t" << o << "\n";
+        os << "]";
     }
+    return os.str();
+}
+
+
+std::ostream& operator<<(std::ostream& stream, const Orders& orders) {
+    stream << to_string(orders);
     return stream;
+}
+
+std::string to_string(const PriceLevel pl) {
+    std::ostringstream os;
+    os << "{price:" << (double) pl.price / PRICE_FACTOR << ",volume:" << pl.volume << ",count:" << pl.count << ",orders:" << pl.orders << "}";
+    return os.str();
 }
 
 std::ostream& operator<<(std::ostream& stream, const PriceLevel pl) {
-    stream << "{price:" << (double) pl.price / PRICE_FACTOR << ",volume:" << pl.volume << ",count:" << pl.count << ",orders:" << pl.orders << "}";
+    stream << to_string(pl);
     return stream;
 }
 
