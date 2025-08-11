@@ -181,6 +181,7 @@ class Instrument final {
         }
 };
 
+std::vector<std::string> symbols;
 std::unordered_map<std::string, Instrument> instruments;
 
 int main() {
@@ -193,8 +194,15 @@ int main() {
 
     auto start = std::chrono::steady_clock::now();
 
+    //in practice we would probably fetch symbol names somewhere in advance
+    //alternatively you could read market data and detect when a new symbol appears, initializing a new symbol and instrument when this happens
+    std::string alph = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     for (int i = 0; i < 26; i++) {
-        instruments[{static_cast<char>('A' + i)}] = Instrument({static_cast<char>('A' + i)});
+        symbols.push_back(alph.substr(i, 1));
+    }
+
+    for (auto sym : symbols) {
+        instruments[sym] = Instrument(sym);
     }
 
     for (int i = 0; i < 100000; i++) { //change to entire file
@@ -226,8 +234,8 @@ int main() {
     }
 
     //just for sanity check before I write tests (not actual tests)
-    std::cout << (double) instruments["B"].getBestOffer(B) / PRICE_FACTOR << " " << (double) instruments["B"].getBestOffer(S) / PRICE_FACTOR << "\n";
-    std::cout << instruments["J"].getLevelByIndex(0, B).price << " " << instruments["J"].getLevelByIndex(0, S).volume << " " << instruments["J"].getLevelByIndex(0, S).count << "\n";
+    //std::cout << (double) instruments["B"].getBestOffer(B) / PRICE_FACTOR << " " << (double) instruments["B"].getBestOffer(S) / PRICE_FACTOR << "\n";
+    //std::cout << instruments["J"].getLevelByIndex(0, B).price << " " << instruments["J"].getLevelByIndex(0, S).volume << " " << instruments["J"].getLevelByIndex(0, S).count << "\n";
     //std::cout << instruments["J"].getLevelByPrice(1160650, side["B"]) << "\n";
     //std::cout << instruments["J"].getOrderById(2893934) << "\n";
     
