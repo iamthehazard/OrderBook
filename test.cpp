@@ -9,7 +9,7 @@ TEST_CASE("Order equality") {
         134968019283,
         5891,
         600,
-        0,
+        B,
         "A"
     };
     Order o2 = {
@@ -17,7 +17,7 @@ TEST_CASE("Order equality") {
         134968019283,
         5891,
         600,
-        0,
+        B,
         "B"
     };
     Order o3 = {
@@ -25,7 +25,7 @@ TEST_CASE("Order equality") {
         134968019283,
         5891,
         600,
-        1,
+        S,
         "A"
     };
     Order o4 = {
@@ -33,7 +33,7 @@ TEST_CASE("Order equality") {
         134968019283,
         5891,
         600,
-        0,
+        B,
         "A"
     };
     Order o5 = {
@@ -41,7 +41,7 @@ TEST_CASE("Order equality") {
         10469091235,
         106000,
         2340,
-        0,
+        B,
         "A"
     };
     REQUIRE(o1 == o1);
@@ -57,8 +57,8 @@ TEST_CASE("PriceLevel equality") {
         600,
         2,
         {
-            {0, 0, 0, 0, 0, "A"},
-            {5, 100, 60, 32, 0, "A"}
+            {0, 0, 0, 0, B, "A"},
+            {5, 100, 60, 32, B, "A"}
         }
     };
     PriceLevel p2 = {
@@ -66,8 +66,8 @@ TEST_CASE("PriceLevel equality") {
         600,
         2,
         {
-            {0, 0, 0, 0, 0, "A"},
-            {5, 100, 60, 32, 0, "A"}
+            {0, 0, 0, 0, B, "A"},
+            {5, 100, 60, 32, B, "A"}
         }
     };
     PriceLevel p3 = {
@@ -75,8 +75,8 @@ TEST_CASE("PriceLevel equality") {
         600,
         2,
         {
-            {5, 100, 60, 32, 0, "A"},
-            {0, 0, 0, 0, 0, "A"}
+            {5, 100, 60, 32, B, "A"},
+            {0, 0, 0, 0, B, "A"}
         }
     };
     PriceLevel p4 = {
@@ -84,7 +84,7 @@ TEST_CASE("PriceLevel equality") {
         600,
         2,
         {
-            {0, 0, 0, 0, 0, "A"}
+            {0, 0, 0, 0, B, "A"}
         }
     };
     PriceLevel p5 = {
@@ -92,8 +92,8 @@ TEST_CASE("PriceLevel equality") {
         600,
         2,
         {
-            {0, 0, 0, 0, 0, "A"},
-            {5, 100, 60, 32, 0, "A"}
+            {0, 0, 0, 0, B, "A"},
+            {5, 100, 60, 32, B, "A"}
         }
     };
     PriceLevel p6 = {
@@ -101,8 +101,8 @@ TEST_CASE("PriceLevel equality") {
         600,
         2,
         {
-            {0, 0, 0, 0, 0, "A"},
-            {4, 100, 60, 32, 0, "A"}
+            {0, 0, 0, 0, B, "A"},
+            {4, 100, 60, 32, B, "A"}
         }
     };
     REQUIRE(p1 == p2);
@@ -119,10 +119,10 @@ TEST_CASE("adding") {
 
     SECTION("empty properly throws") {
         REQUIRE_THROWS(ins.getOrderById(0));
-        REQUIRE_THROWS(ins.getLevelByIndex(0, side["S"]));
-        REQUIRE_THROWS(ins.getLevelByIndex(1, side["B"]));
-        REQUIRE_THROWS(ins.getLevelByPrice(5, side["S"]));
-        REQUIRE_THROWS(ins.getLevelByPrice(10052035, side["B"]));
+        REQUIRE_THROWS(ins.getLevelByIndex(0, S));
+        REQUIRE_THROWS(ins.getLevelByIndex(1, B));
+        REQUIRE_THROWS(ins.getLevelByPrice(5, S));
+        REQUIRE_THROWS(ins.getLevelByPrice(10052035, B));
     }
 
     Order o1 = {
@@ -130,7 +130,7 @@ TEST_CASE("adding") {
         4,
         195900,
         50,
-        side["S"],
+        S,
         "A"
     };
     PriceLevel pl1 = {
@@ -145,11 +145,11 @@ TEST_CASE("adding") {
         REQUIRE_NOTHROW(ins.getOrderById(0)); //basically checking that getOrderPtr doesn't throw anything
         REQUIRE(ins.getOrderById(0) == o1);
 
-        REQUIRE(ins.getLevelByIndex(0, side["S"]) == pl1);
-        REQUIRE_THROWS(ins.getLevelByIndex(1, side["S"]));
-        REQUIRE_THROWS(ins.getLevelByIndex(0, side["B"]));
+        REQUIRE(ins.getLevelByIndex(0, S) == pl1);
+        REQUIRE_THROWS(ins.getLevelByIndex(1, S));
+        REQUIRE_THROWS(ins.getLevelByIndex(0, B));
 
-        REQUIRE(ins.getLevelByPrice(195900, side["S"]) == pl1);
+        REQUIRE(ins.getLevelByPrice(195900, S) == pl1);
     }
 
     Order o2 = {
@@ -157,7 +157,7 @@ TEST_CASE("adding") {
         58921,
         195500,
         10,
-        side["S"],
+        S,
         "A"
     };
     PriceLevel pl2 = {
@@ -169,12 +169,12 @@ TEST_CASE("adding") {
     SECTION("add another order, diff price") {
         ins.addOrder(o1);
         ins.addOrder(o2);
-        REQUIRE_NOTHROW(ins.getLevelByIndex(1, side["S"]));
-        REQUIRE(ins.getLevelByIndex(0, side["S"]) == pl2);
-        REQUIRE(ins.getLevelByIndex(1, side["S"]) == pl1);
+        REQUIRE_NOTHROW(ins.getLevelByIndex(1, S));
+        REQUIRE(ins.getLevelByIndex(0, S) == pl2);
+        REQUIRE(ins.getLevelByIndex(1, S) == pl1);
 
-        REQUIRE(ins.getLevelByPrice(195900, side["S"]) == pl1);
-        REQUIRE(ins.getLevelByPrice(195500, side["S"]) == pl2);
+        REQUIRE(ins.getLevelByPrice(195900, S) == pl1);
+        REQUIRE(ins.getLevelByPrice(195500, S) == pl2);
     }
 
     Order o3 = {
@@ -182,7 +182,7 @@ TEST_CASE("adding") {
         4010293,
         195900,
         20,
-        side["S"],
+        S,
         "A"
     };
     PriceLevel pl3 = {
@@ -195,13 +195,13 @@ TEST_CASE("adding") {
         ins.addOrder(o1);
         ins.addOrder(o2);
         ins.addOrder(o3);
-        REQUIRE_NOTHROW(ins.getLevelByIndex(1, side["S"]));
-        REQUIRE_THROWS(ins.getLevelByIndex(2, side["S"]));
+        REQUIRE_NOTHROW(ins.getLevelByIndex(1, S));
+        REQUIRE_THROWS(ins.getLevelByIndex(2, S));
         
         
-        REQUIRE(ins.getLevelByIndex(1, side["S"]) == pl3);
-        REQUIRE(ins.getLevelByPrice(195900, side["S"]) == pl3);
-        REQUIRE(ins.getLevelByPrice(195500, side["S"]) == pl2);
+        REQUIRE(ins.getLevelByIndex(1, S) == pl3);
+        REQUIRE(ins.getLevelByPrice(195900, S) == pl3);
+        REQUIRE(ins.getLevelByPrice(195500, S) == pl2);
     }
 
     Order o4 = {
@@ -209,7 +209,7 @@ TEST_CASE("adding") {
         5981,
         196020,
         500,
-        side["B"],
+        B,
         "A"
     };
     SECTION("add order to other side") {
@@ -217,9 +217,9 @@ TEST_CASE("adding") {
         ins.addOrder(o2);
         ins.addOrder(o3);
         ins.addOrder(o4);
-        REQUIRE_THROWS(ins.getLevelByIndex(2, side["S"]));
-        REQUIRE_NOTHROW(ins.getLevelByIndex(0, side["B"]));
-        REQUIRE_THROWS(ins.getLevelByPrice(196020, side["S"]));
-        REQUIRE_NOTHROW(ins.getLevelByPrice(196020, side["B"]));
+        REQUIRE_THROWS(ins.getLevelByIndex(2, S));
+        REQUIRE_NOTHROW(ins.getLevelByIndex(0, B));
+        REQUIRE_THROWS(ins.getLevelByPrice(196020, S));
+        REQUIRE_NOTHROW(ins.getLevelByPrice(196020, B));
     }
 }
