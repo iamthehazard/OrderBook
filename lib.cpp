@@ -1,117 +1,136 @@
 #include <iostream>
 #include <list>
+#include <sstream>
 #include <unordered_map>
+#include <ext/pb_ds/assoc_container.hpp>
 #include <map>
+
+//example lines (so I don't have to keep opening events.in)
+//NewOrder: {"exchTime":1725412500115000,"orderId":1591,"price":113.26,"qty":100,"recvTime":1725413100093350,"side":"S","symbol":"E"}
+//OrderCanceled: {"exchTime":1725412516673000,"orderId":36941,"recvTime":1725413100093350,"symbol":"E"}
+//Trade: {"exchTime":1725413100000000,"price":118.7,"qty":50,"recvTime":1725413100693106,"symbol":"F","tradeId":"36581","tradeTime":1725413100000000}
+//OrderExecuted: {"exchTime":1725413100000000,"execQty":50,"leavesQty":0,"orderId":78849,"recvTime":1725413100693106,"symbol":"F"}
+//OrderExecuted: {"exchTime":1725413100000000,"execQty":50,"leavesQty":10,"orderId":45517,"recvTime":1725413100693106,"symbol":"F"}
 
 const int PRICE_FACTOR = 10000; //should be divisible by 2000
 
-std::map<std::string, bool> side = {
-    {"S", 1},
-    {"B", 0}
+enum Side {
+    B = 0,
+    S = 1
 };
+
+const std::map<std::string, Side> sideMap= {
+    {"B", B},
+    {"S", S}
+};
+
+std::string to_string(Side s) {
+    return s ? "buy" : "sell";
+}
 
 struct Order {
     int id;
     long long exchTime;
-    int price; //price, always int
+    int price; //price * 1000, always int
     int qty;
-    bool isAsk;
+    Side side;
     std::string symbol;
-    //std::list<Order>::iterator it;
 };
+using Orders = std::list<Order>;
+using OrderRef = Orders::iterator;
 
 struct PriceLevel {
     int price;
     int volume = 0;
     int count = 0; //# of orders
-    std::list<Order> orders;
+    Orders orders;
 };
 
+std::string to_string(const Order& o) {
+    std::ostringstream os;
+    os << "{exchTime:" << o.exchTime << ",id:" << o.id << ",price:" << (double) o.price / PRICE_FACTOR << ",qty:" << o.qty << ",side:" << to_string(o.side) << ",symbol:" << o.symbol << "}";
+    return os.str();
+}
+
 std::ostream& operator<<(std::ostream& stream, const Order& o) {
-    stream << "{exchTime:" << o.exchTime << ",id:" << o.id << ",price:" << (double) o.price / PRICE_FACTOR << ",qty:" << o.qty << ",side:" << (o.isAsk ? "S" : "B") << ",symbol:" << o.symbol << "}";
+    stream << to_string(o);
     return stream;
 }
 
-std::ostream& operator<<(std::ostream& stream, const std::list<Order>& orders) {
+std::string to_string(const Orders& orders) {
+    std::ostringstream os;
     if (orders.empty()) {
-        stream << "[]";
+        os << "[]";
     } else {
-        stream << "[\n";
-        for (const auto& o : orders) stream << "\t" << o << "\n";
-        stream << "]";
+        os << "[\n";
+        for (const auto& o : orders) os << "\t" << o << "\n";
+        os << "]";
     }
+    return os.str();
+}
+
+
+std::ostream& operator<<(std::ostream& stream, const Orders& orders) {
+    stream << to_string(orders);
     return stream;
+}
+
+std::string to_string(const PriceLevel pl) {
+    std::ostringstream os;
+    os << "{price:" << (double) pl.price / PRICE_FACTOR << ",volume:" << pl.volume << ",count:" << pl.count << ",orders:" << pl.orders << "}";
+    return os.str();
 }
 
 std::ostream& operator<<(std::ostream& stream, const PriceLevel pl) {
-    stream << "{price:" << (double) pl.price / PRICE_FACTOR << ",volume:" << pl.volume << ",count:" << pl.count << ",orders:" << pl.orders << "}";
+    stream << to_string(pl);
     return stream;
 }
 
-bool operator==(const Order& o1, const Order& o2) {
-    if (o1.id != o2.id ||
-        o1.exchTime != o2.exchTime ||
-        o1.price != o2.price ||
-        o1.qty != o2.qty ||
-        o1.isAsk != o2.isAsk ||
-        o1.symbol != o2.symbol) {
-            return false;
+template<typename T>
+struct sideBookComp {
+    sideBookComp(Side dir) : do_greater(dir) {}
+    bool operator() (const T& x, const T& y) const {
+        return do_greater == B ? x > y : x < y;
     }
-    return true;
-}
+    bool do_greater;
+};
 
-bool operator!=(const Order& o1, const Order& o2) {
-    return !(o1 == o2);
-}
+class sideBook final {
+    //not going to make these private; we will be returning references to them anyways (only for internal instrument use)
+    public:
+        Side side;
+        std::map<int, PriceLevel, sideBookComp<int>> priceLevels;
 
-bool operator==(const PriceLevel& pl1, const PriceLevel& pl2) {
-    if (pl1.price != pl2.price || pl1.volume != pl2.volume || pl1.count != pl2.count) return false;
-    if (pl1.orders.size() != pl2.orders.size()) return false;
-    auto it1 = pl1.orders.begin();
-    auto it2 = pl2.orders.begin();
-    while (it1 != pl1.orders.end()) {
-        if (*it1 != *it2) {
-            return false;
-        }
-        it1++;
-        it2++;
-    }
-    return true;
-}
-
-bool operator!=(const PriceLevel& pl1, const PriceLevel& pl2) {
-    return !(pl1 == pl2);
-}
+        sideBook(Side s) : side(s), priceLevels(side) {}
+};
 
 class Instrument final {
     public:
-        Instrument() {}
+        Instrument() = default;
 
-        Instrument(std::string sym) {
+        explicit Instrument(std::string const& sym) {
             symbol = sym;
         }
 
-        void addOrder(Order order) {
-            auto pl = getLevelPointer(order.price, order.isAsk);
+        void addOrder(Order const& order) {
+            auto pl = getLevelPointer(order.price, order.side);
             pl->price = order.price;
-            pl->orders.push_back(order);
+            ordersById[order.id] = pl->orders.insert(pl->orders.end(), order);
             pl->volume += order.qty;
             pl->count++;
-
-            ordersById[order.id] = std::prev(pl->orders.end());;
         }
 
-        void removeOrder(std::list<Order>::iterator it) {
-            auto order = *it;
-            auto pl = getLevelPointer(order.price, order.isAsk);
+        void removeOrder(Orders::iterator it) {
+            auto const& order = *it;
+            auto pl = getLevelPointer(order.price, order.side);
 
-            pl->orders.erase(it);
-            if (pl->orders.empty()) {
-                if (order.isAsk) asks.erase(order.price);
-                else bids.erase(order.price);
+            if (pl->orders.size() == 1) {
+                bookSides[order.side].priceLevels.erase(order.price);
+                return;
             }
             pl->volume -= order.qty;
             pl->count--;
+            pl->orders.erase(it);
 
             ordersById.erase(order.id);
         }
@@ -121,12 +140,13 @@ class Instrument final {
             removeOrder(it);
         }
 
-        void executeOrder(std::list<Order>::iterator it, int execQty) {
-            auto order = *it;
+        void executeOrder(Orders::iterator it, int execQty) {
+            auto const& order = *it;
+            if (order.qty < execQty) throw std::invalid_argument{"execQty " + std::to_string(execQty) + " greater than order qty " + std::to_string(order.qty)};
             if (order.qty == execQty) removeOrder(order.id);
             else {
                 it->qty -= execQty;
-                getLevelPointer(order.price, order.isAsk)->volume -= execQty;
+                getLevelPointer(order.price, order.side)->volume -= execQty;
             }
         }
 
@@ -135,76 +155,49 @@ class Instrument final {
             executeOrder(it, execQty);
         }
 
-        Order getOrderById(int id) {
+        const Order& getOrderById(int id) {
             return *getOrderPtr(id);
         }
 
-        PriceLevel getLevelByIndex(std::size_t index, bool isAsk) {
-            if (isAsk) {
-                if (asks.size() > index) {
-                    auto it = asks.begin();
-                    std::advance(it, index);
-                    return it->second;
-                }
-                throw std::invalid_argument{"No ask level at index " + std::to_string(index) + ", current number of PriceLevels is " + std::to_string(asks.size())};
-            } else {
-                if (bids.size() > index) {
-                    auto it = bids.begin();
-                    std::advance(it, index);
-                    return it->second;
-                }
-                throw std::invalid_argument{"No bid level at index " + std::to_string(index) + ", current number of PriceLevels is " + std::to_string(asks.size())};
-            }
-        }
-
-        PriceLevel getLevelByPrice(int price, bool isAsk) {
-            if (isAsk) {
-                auto it = asks.find(price);
-                if (it == asks.end()) throw std::invalid_argument{"No ask level at " + std::to_string((double) price / PRICE_FACTOR)};
-                return it->second;
-            } else {
-                auto it = bids.find(price);
-                if (it == bids.end()) throw std::invalid_argument{"No bid level at " + std::to_string((double) price / PRICE_FACTOR)};
+        const PriceLevel& getLevelByIndex(std::size_t index, Side side) {
+            if (bookSides[side].priceLevels.size() > index) {
+                auto it = bookSides[side].priceLevels.begin();
+                std::advance(it, index);
                 return it->second;
             }
+            throw std::invalid_argument{"No " + to_string(side) + " level at index " + std::to_string(index)};
         }
 
-        int getBestOffer(bool isAsk) {
-            return getLevelByIndex(0, isAsk).price;
+        const PriceLevel& getLevelByPrice(int price, Side side) {
+            auto it = bookSides[side].priceLevels.find(price);
+            if (it == bookSides[side].priceLevels.end()) throw std::invalid_argument{"No " + to_string(side) + " level at " + std::to_string((double) price / PRICE_FACTOR)};
+            return it->second;
+        }
+
+        int getBestOffer(Side side) {
+            return getLevelByIndex(0, side).price;
         }
 
         int getMidPrice() {
-            return (getBestOffer(0) + getBestOffer(1)) / 2;
+            return (getBestOffer(B) + getBestOffer(S)) / 2;
         }
-    private:
+    private: 
         std::string symbol;
-        std::unordered_map<int, std::list<Order>::iterator> ordersById;
-        std::map<int, PriceLevel> asks;
-        std::map<int, PriceLevel, std::greater<int>> bids;
+        std::unordered_map<int, Orders::iterator> ordersById;
+        //__gnu_pbds::gp_hash_table<int, Orders::iterator> ordersById;
+        sideBook bookSides[2] = {
+            sideBook(B),
+            sideBook(S)
+        };
 
-        PriceLevel* getLevelPointer(int price, bool isAsk) {
-            if (isAsk) {
-                return &asks[price];
-            } else {
-                return &bids[price];
-            }
+        PriceLevel* getLevelPointer(int price, Side side) {
+            return &bookSides[side].priceLevels[price];
         }
 
-        std::list<Order>::iterator getOrderPtr(int id) {
+        Orders::iterator getOrderPtr(int id) {
             auto it = ordersById.find(id);
             if (it == ordersById.end()) throw std::invalid_argument("No order with id " + std::to_string(id));
             return it->second;
         }
 };
 
-std::unordered_map<std::string, Instrument> instruments;
-
-/*int main() {
-    std::map<int, PriceLevel> mp;
-    auto pt = &mp[0];
-    std::cout << *pt << "\n";
-    pt->price = 5;
-    std::cout << mp.size() << "\n";
-    auto pt2 = &mp[7];
-    std::cout << mp.size() << "\n";
-}*/
