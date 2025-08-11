@@ -39,12 +39,48 @@ struct Order {
 using Orders = std::list<Order>;
 using OrderRef = Orders::iterator;
 
+bool operator==(const Order& o1, const Order& o2) {
+    if (o1.id != o2.id ||
+        o1.exchTime != o2.exchTime ||
+        o1.price != o2.price ||
+        o1.qty != o2.qty ||
+        o1.side != o2.side ||
+        o1.symbol != o2.symbol) {
+            return false;
+    }
+    return true;
+}
+
+bool operator!=(const Order& o1, const Order& o2) {
+    return !(o1 == o2);
+
+}
+
 struct PriceLevel {
     int price;
     int volume = 0;
     int count = 0; //# of orders
     Orders orders;
 };
+
+bool operator==(const PriceLevel& pl1, const PriceLevel& pl2) {
+    if (pl1.price != pl2.price || pl1.volume != pl2.volume || pl1.count != pl2.count) return false;
+    if (pl1.orders.size() != pl2.orders.size()) return false;
+    auto it1 = pl1.orders.begin();
+    auto it2 = pl2.orders.begin();
+    while (it1 != pl1.orders.end()) {
+        if (*it1 != *it2) {
+            return false;
+        }
+        it1++;
+        it2++;
+    }
+    return true;
+}
+
+bool operator!=(const PriceLevel& pl1, const PriceLevel& pl2) {
+    return !(pl1 == pl2);
+}
 
 std::string to_string(const Order& o) {
     std::ostringstream os;
