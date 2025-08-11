@@ -14,17 +14,26 @@ using json = nlohmann::json;
 
 const int PRICE_FACTOR = 10000; //should be divisible by 2000
 
-std::map<std::string, bool> side = {
-    {"S", 1},
-    {"B", 0}
+enum Side {
+    B = 0,
+    S = 1
 };
+
+const std::map<std::string, Side> sideMap= {
+    {"B", B},
+    {"S", S}
+};
+
+std::string to_string(Side s) {
+    return s ? "buy" : "sell";
+}
 
 struct Order {
     int id;
     long long exchTime;
     int price; //price * 1000, always int
     int qty;
-    bool isAsk;
+    Side side;
     std::string symbol;
 };
 using Orders = std::list<Order>;
@@ -38,7 +47,7 @@ struct PriceLevel {
 };
 
 std::ostream& operator<<(std::ostream& stream, const Order& o) {
-    stream << "{exchTime:" << o.exchTime << ",id:" << o.id << ",price:" << (double) o.price / PRICE_FACTOR << ",qty:" << o.qty << ",side:" << (o.isAsk ? "S" : "B") << ",symbol:" << o.symbol << "}";
+    stream << "{exchTime:" << o.exchTime << ",id:" << o.id << ",price:" << (double) o.price / PRICE_FACTOR << ",qty:" << o.qty << ",side:" << to_string(o.side) << ",symbol:" << o.symbol << "}";
     return stream;
 }
 
@@ -58,6 +67,24 @@ std::ostream& operator<<(std::ostream& stream, const PriceLevel pl) {
     return stream;
 }
 
+template<typename T>
+struct sideBookComp {
+    sideBookComp(Side dir) : do_greater(dir) {}
+    bool operator() (const T& x, const T& y) const {
+        return do_greater == B ? x > y : x < y;
+    }
+    bool do_greater;
+};
+
+class sideBook final {
+    //not going to make these private; we will be returning references to them anyways (only for internal instrument use)
+    public:
+        Side side;
+        std::map<int, PriceLevel, sideBookComp<int>> priceLevels;
+
+        sideBook(Side s) : side(s), priceLevels(side) {}
+};
+
 class Instrument final {
     public:
         Instrument() = default;
@@ -67,7 +94,7 @@ class Instrument final {
         }
 
         void addOrder(Order const& order) {
-            auto pl = getLevelPointer(order.price, order.isAsk);
+            auto pl = getLevelPointer(order.price, order.side);
             pl->price = order.price;
             ordersById[order.id] = pl->orders.insert(pl->orders.end(), order);
             pl->volume += order.qty;
@@ -76,11 +103,10 @@ class Instrument final {
 
         void removeOrder(Orders::iterator it) {
             auto const& order = *it;
-            auto pl = getLevelPointer(order.price, order.isAsk);
+            auto pl = getLevelPointer(order.price, order.side);
 
             if (pl->orders.size() == 1) {
-                if (order.isAsk) asks.erase(order.price);
-                else bids.erase(order.price);
+                bookSides[order.side].priceLevels.erase(order.price);
                 return;
             }
             pl->volume -= order.qty;
@@ -101,7 +127,7 @@ class Instrument final {
             if (order.qty == execQty) removeOrder(order.id);
             else {
                 it->qty -= execQty;
-                getLevelPointer(order.price, order.isAsk)->volume -= execQty;
+                getLevelPointer(order.price, order.side)->volume -= execQty;
             }
         }
 
@@ -114,55 +140,38 @@ class Instrument final {
             return *getOrderPtr(id);
         }
 
-        const PriceLevel& getLevelByIndex(std::size_t index, bool isAsk) {
-            if (isAsk) {
-                if (asks.size() > index) {
-                    auto it = asks.begin();
-                    std::advance(it, index);
-                    return it->second;
-                }
-                throw std::invalid_argument{"No ask level at index " + std::to_string(index)};
-            } else {
-                if (bids.size() > index) {
-                    auto it = bids.begin();
-                    std::advance(it, index);
-                    return it->second;
-                }
-                throw std::invalid_argument{"No bid level at index " + std::to_string(index)};
-            }
-        }
-
-        const PriceLevel& getLevelByPrice(int price, bool isAsk) {
-            if (isAsk) {
-                auto it = asks.find(price);
-                if (it == asks.end()) throw std::invalid_argument{"No ask level at " + std::to_string((double) price / PRICE_FACTOR)};
-                return it->second;
-            } else {
-                auto it = bids.find(price);
-                if (it == bids.end()) throw std::invalid_argument{"No bid level at " + std::to_string((double) price / PRICE_FACTOR)};
+        const PriceLevel& getLevelByIndex(std::size_t index, Side side) {
+            if (bookSides[side].priceLevels.size() > index) {
+                auto it = bookSides[side].priceLevels.begin();
+                std::advance(it, index);
                 return it->second;
             }
+            throw std::invalid_argument{"No " + to_string(side) + " level at index " + std::to_string(index)};
         }
 
-        int getBestOffer(bool isAsk) {
-            return getLevelByIndex(0, isAsk).price;
+        const PriceLevel& getLevelByPrice(int price, Side side) {
+            auto it = bookSides[side].priceLevels.find(price);
+            if (it == bookSides[side].priceLevels.end()) throw std::invalid_argument{"No " + to_string(side) + " level at " + std::to_string((double) price / PRICE_FACTOR)};
+            return it->second;
+        }
+
+        int getBestOffer(Side side) {
+            return getLevelByIndex(0, side).price;
         }
 
         int getMidPrice() {
-            return (getBestOffer(0) + getBestOffer(1)) / 2;
+            return (getBestOffer(B) + getBestOffer(S)) / 2;
         }
-    private:
+    private: 
         std::string symbol;
         std::unordered_map<int, Orders::iterator> ordersById;
-        std::map<int, PriceLevel> asks;
-        std::map<int, PriceLevel, std::greater<int>> bids;
+        sideBook bookSides[2] = {
+            sideBook(B),
+            sideBook(S)
+        };
 
-        PriceLevel* getLevelPointer(int price, bool isAsk) {
-            if (isAsk) {
-                return &asks[price];
-            } else {
-                return &bids[price];
-            }
+        PriceLevel* getLevelPointer(int price, Side side) {
+            return &bookSides[side].priceLevels[price];
         }
 
         Orders::iterator getOrderPtr(int id) {
@@ -188,7 +197,7 @@ int main() {
         instruments[{static_cast<char>('A' + i)}] = Instrument({static_cast<char>('A' + i)});
     }
 
-    for (int i = 0; i < 100000; i++) {
+    for (int i = 0; i < 100000; i++) { //change to entire file
         std::string type, data;
         std::cin >> type >> data;
         auto j = json::parse(data);
@@ -202,7 +211,7 @@ int main() {
                 j["exchTime"].template get<long long>(),
                 (int)lround(j["price"].template get<double>() * PRICE_FACTOR), //test
                 j["qty"].template get<int>(),
-                side[j["side"].template get<std::string>()],
+                sideMap.at(j["side"].template get<std::string>()),
                 j["symbol"].template get<std::string>()
             });
         } else if (type == "OrderCanceled:") {
@@ -217,11 +226,11 @@ int main() {
     }
 
     //just for sanity check before I write tests (not actual tests)
-    std::cout << (double) instruments["B"].getBestOffer(side["B"]) / PRICE_FACTOR << " " << (double) instruments["B"].getBestOffer(side["S"]) / PRICE_FACTOR << "\n";
-    std::cout << instruments["J"].getLevelByIndex(0, side["B"]).price << " " << instruments["J"].getLevelByIndex(0, side["B"]).volume << " " << instruments["J"].getLevelByIndex(0, side["B"]).count << "\n";
+    std::cout << (double) instruments["B"].getBestOffer(B) / PRICE_FACTOR << " " << (double) instruments["B"].getBestOffer(S) / PRICE_FACTOR << "\n";
+    std::cout << instruments["J"].getLevelByIndex(0, B).price << " " << instruments["J"].getLevelByIndex(0, S).volume << " " << instruments["J"].getLevelByIndex(0, S).count << "\n";
     //std::cout << instruments["J"].getLevelByPrice(1160650, side["B"]) << "\n";
     //std::cout << instruments["J"].getOrderById(2893934) << "\n";
     
     auto end = std::chrono::steady_clock::now();
-    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "\n";
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms \n";
 }
