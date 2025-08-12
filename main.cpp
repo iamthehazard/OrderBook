@@ -1,10 +1,28 @@
 #include "include/json.hpp"
 #include "lib.cpp"
+#include <fstream>
 
 using json = nlohmann::json;
 
 std::vector<std::string> symbols;
 std::unordered_map<std::string, Instrument> instruments;
+
+std::string toCsvLine(L1Datum L1d) {
+    {
+        using namespace std;
+        return to_string(L1d.exchTime) + ","
+            + L1d.symbol + ","
+            + to_string(L1d.price[0]) + ","
+            + to_string(L1d.volume[0]) + ","
+            + to_string(L1d.price[1]) + ","
+            + to_string(L1d.volume[1]);
+    }
+}
+
+std::ofstream l1Stream("l1.out");
+void L1UpdateHandler(L1Datum L1d) {
+    l1Stream << toCsvLine(L1d) << "\n";
+}
 
 int main() {
     std::ios::sync_with_stdio(false);
@@ -25,11 +43,14 @@ int main() {
 
     for (auto sym : symbols) {
         instruments[sym] = Instrument(sym);
+        instruments[sym].setCallback(&L1UpdateHandler);
     }
 
-    for (int i = 0; i < 100000; i++) { //change to entire file
-        std::string type, data;
-        std::cin >> type >> data;
+    l1Stream << "recv_time,symbol,bid_price,bid_size,ask_price,ask_size\n";
+
+    std::string type, data;
+    while (std::cin >> type >> data) { //change to entire file
+        //std::cin >> type >> data;
         auto j = json::parse(data);
 
         std::string symbol = j["symbol"].template get<std::string>();
@@ -38,7 +59,7 @@ int main() {
         if (type == "NewOrder:") {
             instrument->addOrder({
                 j["orderId"].template get<int>(),
-                j["exchTime"].template get<long long>(),
+                j["exchTime"].template get<timestamp>(),
                 (int)lround(j["price"].template get<double>() * PRICE_FACTOR),
                 j["qty"].template get<int>(),
                 sideMap.at(j["side"].template get<std::string>()),
@@ -67,4 +88,5 @@ int main() {
     //note that reading 100k lines takes ~3500ms
     //reading 100k lines AND getting components takes ~3800ms
     //so actual order book operations only take ~200ms
+    std::this_thread::sleep_for(std::chrono::seconds(1));
 }

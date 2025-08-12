@@ -1,9 +1,11 @@
 #include <iostream>
 #include <list>
 #include <sstream>
+#include <stdexcept>
 #include <unordered_map>
 #include <ext/pb_ds/assoc_container.hpp>
 #include <map>
+#include <thread>
 
 //example lines (so I don't have to keep opening events.in)
 //NewOrder: {"exchTime":1725412500115000,"orderId":1591,"price":113.26,"qty":100,"recvTime":1725413100093350,"side":"S","symbol":"E"}
@@ -13,6 +15,7 @@
 //OrderExecuted: {"exchTime":1725413100000000,"execQty":50,"leavesQty":10,"orderId":45517,"recvTime":1725413100693106,"symbol":"F"}
 
 const int PRICE_FACTOR = 10000; //should be divisible by 2000
+const int UNDEF_PRICE = INT32_MAX;
 
 enum Side {
     B = 0,
@@ -28,9 +31,11 @@ std::string to_string(Side s) {
     return s ? "buy" : "sell";
 }
 
+using timestamp = uint64_t;
+
 struct Order {
     int id;
-    long long exchTime;
+    timestamp exchTime;
     int price; //price * 1000, always int
     int qty;
     Side side;
@@ -60,6 +65,7 @@ struct PriceLevel {
     int volume = 0;
     int count = 0; //# of orders
     Orders orders;
+    //side?
 };
 
 bool operator==(const PriceLevel& pl1, const PriceLevel& pl2) {
@@ -139,13 +145,49 @@ class sideBook final {
         sideBook(Side s) : side(s), priceLevels(side) {}
 };
 
+//a single snapshot of L1 data
+struct L1Datum {
+    timestamp exchTime;
+    //timestamp recvTime //add?
+    int price[2];
+    int volume[2];
+    int count[2];
+
+    std::string symbol;
+};
+
 class Instrument final {
     public:
         Instrument() = default;
 
         explicit Instrument(std::string const& sym) {
             symbol = sym;
+            L1 = {
+                0,
+                UNDEF_PRICE,
+                UNDEF_PRICE,
+                0,
+                0,
+                0,
+                0,
+                symbol
+            };
         }
+
+        //if we want to specify an initialization time, I guess?
+        /*explicit Instrument(std::string const& sym, timestamp startTime) {
+            symbol = sym;
+            L1 = {
+                startTime,
+                UNDEF_PRICE,
+                UNDEF_PRICE,
+                0,
+                0,
+                0,
+                0,
+                symbol
+            };
+        }*/
 
         void addOrder(Order const& order) {
             auto pl = getLevelPointer(order.price, order.side);
@@ -153,6 +195,9 @@ class Instrument final {
             ordersById[order.id] = pl->orders.insert(pl->orders.end(), order);
             pl->volume += order.qty;
             pl->count++;
+            
+            //if update occurs at or better than cur best
+            if (order.price == L1.price[order.side] || sideBookComp<int>(order.side)(order.price, L1.price[order.side])) callbackL1(order.exchTime);
         }
 
         void removeOrder(Orders::iterator it) { //honestly can be private
@@ -169,6 +214,9 @@ class Instrument final {
             pl->orders.erase(it);
 
             ordersById.erase(order.id);
+
+            //if update occurs at or better than cur best
+            if (order.price == L1.price[order.side] || sideBookComp<int>(order.side)(order.price, L1.price[order.side])) callbackL1(order.exchTime);
         }
         
         void removeOrder(int id) {
@@ -183,6 +231,8 @@ class Instrument final {
             else {
                 it->qty -= execQty;
                 getLevelPointer(order.price, order.side)->volume -= execQty;
+                //if update occurs at or better than cur best
+                if (order.price == L1.price[order.side] || sideBookComp<int>(order.side)(order.price, L1.price[order.side])) callbackL1(order.exchTime);
             }
         }
 
@@ -210,14 +260,10 @@ class Instrument final {
             return it->second;
         }
 
-        int getBestOffer(Side side) {
-            return getLevelByIndex(0, side).price;
+        void setCallback(void(*cb)(L1Datum)) {
+            callback = cb;
         }
-
-        int getMidPrice() {
-            return (getBestOffer(B) + getBestOffer(S)) / 2;
-        }
-    private: 
+    private:
         std::string symbol;
         std::unordered_map<int, Orders::iterator> ordersById;
         //__gnu_pbds::gp_hash_table<int, Orders::iterator> ordersById;
@@ -225,6 +271,8 @@ class Instrument final {
             sideBook(B),
             sideBook(S)
         };
+        L1Datum L1;
+        void(*callback)(L1Datum) = [](auto x) {}; //empty fn
 
         PriceLevel* getLevelPointer(int price, Side side) {
             return &bookSides[side].priceLevels[price];
@@ -234,6 +282,36 @@ class Instrument final {
             auto it = ordersById.find(id);
             if (it == ordersById.end()) throw std::invalid_argument("No order with id " + std::to_string(id));
             return it->second;
+        }
+
+        void callbackL1(timestamp t) {
+            //roll into same
+            PriceLevel bestBid, bestAsk;
+            try {
+                bestBid = getLevelByIndex(0, B);
+            } catch(std::invalid_argument e) {
+                bestBid = {UNDEF_PRICE};
+            }
+            try {
+                bestAsk = getLevelByIndex(0, S);
+            } catch(std::invalid_argument e) {
+                bestAsk = {UNDEF_PRICE};
+            }
+            L1 = {
+                t,
+                bestBid.price,
+                bestAsk.price,
+                bestBid.volume,
+                bestAsk.volume,
+                bestBid.count,
+                bestAsk.count,
+                symbol
+            };
+            
+            //callback(L1); //do this asynchronously
+            //std::async(std::launch::async, callback, L1);
+            std::thread t1(callback, L1);
+            t1.detach();
         }
 };
 
