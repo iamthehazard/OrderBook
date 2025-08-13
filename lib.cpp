@@ -5,7 +5,10 @@
 #include <unordered_map>
 #include <ext/pb_ds/assoc_container.hpp>
 #include <map>
-#include <thread>
+//#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
 
 //example lines (so I don't have to keep opening events.in)
 //NewOrder: {"exchTime":1725412500115000,"orderId":1591,"price":113.26,"qty":100,"recvTime":1725413100093350,"side":"S","symbol":"E"}
@@ -156,6 +159,104 @@ struct L1Datum {
     std::string symbol;
 };
 
+//need to impl max value??
+class semaphore {
+    std::mutex mutex;
+    std::condition_variable condition;
+    unsigned long count = 0;
+    unsigned long maxCount;
+    std::atomic<bool> *exitFlag;
+
+    public:
+        semaphore(unsigned long ct, unsigned long mct, std::atomic<bool> *ef) : count(ct), maxCount(mct), exitFlag(ef) {}
+
+        //this is implemented quite confusingly
+        void exit() {
+            *exitFlag = true;
+            std::lock_guard<decltype(mutex)> lock(mutex);
+            count = 1; //commenting out this line breaks things
+            condition.notify_one();
+        }
+
+        void release() {
+            std::lock_guard<decltype(mutex)> lock(mutex);
+            if (count != maxCount) count++;
+            condition.notify_one();
+        }
+
+        void acquire() {
+            std::unique_lock<decltype(mutex)> lock(mutex);
+            while (!count) {
+                //std::cout << "waiting..." << count << "\n";
+                condition.wait(lock);
+                //std::cout << count << " ok\n";
+                if (*exitFlag) break;
+            }
+            count--;
+        }
+
+        bool try_acquire() {
+            std::lock_guard<decltype(mutex)> lock(mutex);
+            if (count) {
+                count--;
+                return true;
+            }
+            return false;
+        }
+
+        unsigned long get_count() {
+            return count;
+        }
+};
+
+template<class T>
+class RingBuffer {
+    public:
+        RingBuffer() : size(0) {}
+
+        RingBuffer(size_t sz) : size(sz), buffer(sz) {}
+
+        RingBuffer(int sz, bool toCerr) : size(sz), buffer(sz), CERR_WHEN_INVALID(toCerr) {}
+
+        bool add(T element) {
+            if (numFilled == size) {
+                //overwrite
+                if (CERR_WHEN_INVALID) std::cerr << "Overwrote with no available capacity.\n";
+                buffer[writePos] = element;
+                writePos++;
+                if (writePos == size) writePos = 0;
+                readPos++;
+                if (readPos == size) readPos = 0;
+                return false;
+            }
+            buffer[writePos] = element;
+            numFilled++;
+            writePos++;
+            if (writePos == size) writePos = 0; //should be faster than %
+            return true;
+        }
+
+        T get() {
+            if (numFilled == 0) {
+                if (CERR_WHEN_INVALID) std::cerr << "Tried to read with no elements.\n";
+                return T();
+            }
+            T toReturn = buffer[readPos];
+            numFilled--;
+            readPos++;
+            if (readPos == size) readPos = 0;
+            return toReturn;
+        }
+    private:
+        size_t size;
+        std::vector<T> buffer;
+
+        size_t readPos, writePos = 0;
+        size_t numFilled = 0;
+
+        bool CERR_WHEN_INVALID = false; //can turn off for performance reasons/on for debug?
+};
+
 class Instrument final {
     public:
         Instrument() = default;
@@ -224,6 +325,8 @@ class Instrument final {
             removeOrder(it);
         }
 
+        //one issue here: when a trade is executed at the bbo the L1 callback will be triggered twice (when in reality it should only trigger after the trade finishes)
+        //although this kind of generally ties into issues that arise from the fact that we're not using packets (similar to the "aggressive orders that get immediately filled" but show up in our book history)
         void executeOrder(Orders::iterator it, int execQty) {
             auto const& order = *it;
             if (order.qty < execQty) throw std::invalid_argument{"execQty " + std::to_string(execQty) + " greater than order qty " + std::to_string(order.qty)};
@@ -262,6 +365,10 @@ class Instrument final {
 
         void setCallback(void(*cb)(L1Datum)) {
             callback = cb;
+        }
+
+        std::string getSymbol() {
+            return symbol;
         }
     private:
         std::string symbol;
@@ -308,10 +415,10 @@ class Instrument final {
                 symbol
             };
             
-            //callback(L1); //do this asynchronously
-            //std::async(std::launch::async, callback, L1);
-            std::thread t1(callback, L1);
-            t1.detach();
+            callback(L1);
+            
+            //std::thread t1(callback, L1);
+            //t1.detach();
         }
 };
 

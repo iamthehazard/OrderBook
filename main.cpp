@@ -1,6 +1,8 @@
 #include "include/json.hpp"
 #include "lib.cpp"
+#include <atomic>
 #include <fstream>
+#include <thread>
 
 using json = nlohmann::json;
 
@@ -19,9 +21,38 @@ std::string toCsvLine(L1Datum L1d) {
     }
 }
 
-std::ofstream l1Stream("l1.out");
-void L1UpdateHandler(L1Datum L1d) {
-    l1Stream << toCsvLine(L1d) << "\n";
+const size_t BUFFER_SIZE = 10;
+
+std::atomic<bool> doneWriting = false;
+semaphore numFilled(0, BUFFER_SIZE, &doneWriting);
+std::mutex buffer_manip;
+
+RingBuffer<L1Datum> L1Buf(BUFFER_SIZE);
+std::ofstream L1Stream("l1.out");
+void readBufferTask() {
+    while (true) {
+        if (numFilled.get_count() == 0 && doneWriting) return;
+        //std::cout << numFilled.get_count() << "\n";
+        numFilled.acquire();
+        if (numFilled.get_count() == 0 && doneWriting) return; //more poorly written code
+        L1Datum L1D;
+        {
+            std::lock_guard<std::mutex> g(buffer_manip);
+            L1D = L1Buf.get();
+        }
+        //process L1D below
+
+        L1Stream << toCsvLine(L1D) << "\n";
+    }
+}
+
+void writeBuffer(L1Datum L1D) { //not a task; calls only when there's something to add
+    {
+        std::lock_guard<std::mutex> g(buffer_manip);
+        L1Buf.add(L1D);
+        //std::cout << toCsvLine(L1D) << "\n";
+    }
+    numFilled.release();
 }
 
 int main() {
@@ -43,14 +74,15 @@ int main() {
 
     for (auto sym : symbols) {
         instruments[sym] = Instrument(sym);
-        instruments[sym].setCallback(&L1UpdateHandler);
+        instruments[sym].setCallback(&writeBuffer);
     }
 
-    l1Stream << "recv_time,symbol,bid_price,bid_size,ask_price,ask_size\n";
+    L1Stream << "recv_time,symbol,bid_price,bid_size,ask_price,ask_size\n";
+    std::thread readBufThread(readBufferTask);
 
     std::string type, data;
-    while (std::cin >> type >> data) { //change to entire file
-        //std::cin >> type >> data;
+    //for (int i = 0; i < 100000; i++) { std::cin >> type >> data; //use for partial reads (testing)
+    while (std::cin >> type >> data) {
         auto j = json::parse(data);
 
         std::string symbol = j["symbol"].template get<std::string>();
@@ -63,7 +95,7 @@ int main() {
                 (int)lround(j["price"].template get<double>() * PRICE_FACTOR),
                 j["qty"].template get<int>(),
                 sideMap.at(j["side"].template get<std::string>()),
-                j["symbol"].template get<std::string>()
+                symbol
             });
         } else if (type == "OrderCanceled:") {
             instrument->removeOrder(j["orderId"].template get<int>());
@@ -75,6 +107,10 @@ int main() {
             std::cerr << "Invalid type for message " << type << " " << data << "\n";
         }
     }
+
+    //doneWriting = true;
+    numFilled.exit();
+    readBufThread.join(); //should terminate quickly
 
     //just for sanity check
     //std::cout << (double) instruments["B"].getBestOffer(B) / PRICE_FACTOR << " " << (double) instruments["B"].getBestOffer(S) / PRICE_FACTOR << "\n";
