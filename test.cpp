@@ -246,25 +246,25 @@ TEST_CASE("removing") {
     SECTION("remove order w/ >1 remaining") {
         ins.addOrder(o2);
         ins.addOrder(o1);
-        REQUIRE_NOTHROW(ins.removeOrder(o2.id));
+        REQUIRE_NOTHROW(ins.removeOrder(o2.id, 0));
         REQUIRE(ins.getLevelByIndex(0, S) == pl1);
-        REQUIRE_THROWS(ins.removeOrder(o2.id));
+        REQUIRE_THROWS(ins.removeOrder(o2.id, 0));
         REQUIRE_THROWS(ins.getOrderById(o2.id));
     }
 
     SECTION("remove last order") {
         ins.addOrder(o1);
-        REQUIRE_NOTHROW(ins.removeOrder(o1.id));
+        REQUIRE_NOTHROW(ins.removeOrder(o1.id, 0));
         REQUIRE_THROWS(ins.getLevelByIndex(0, S)); //level should be deleted
-        REQUIRE_THROWS(ins.removeOrder(o1.id));
+        REQUIRE_THROWS(ins.removeOrder(o1.id, 0));
         REQUIRE_THROWS(ins.getOrderById(o1.id));
     }
 
     SECTION("removing nonexistent orders") {
         ins.addOrder(o1);
         ins.addOrder(o2);
-        REQUIRE_THROWS(ins.removeOrder(195));
-        REQUIRE_THROWS(ins.removeOrder(130496));
+        REQUIRE_THROWS(ins.removeOrder(195, 0));
+        REQUIRE_THROWS(ins.removeOrder(130496, 0));
     }
 }
 
@@ -300,7 +300,7 @@ TEST_CASE("executing") {
     };
     SECTION("partial execution") {
         ins.addOrder(o1);
-        ins.executeOrder(0, 30);
+        ins.executeOrder(0, 30, 0);
         
         REQUIRE(ins.getOrderById(0) == o2);
         REQUIRE(ins.getLevelByIndex(0, S) == pl2);
@@ -308,7 +308,7 @@ TEST_CASE("executing") {
 
     SECTION("complete execution") {
         ins.addOrder(o1);
-        ins.executeOrder(0, 50);
+        ins.executeOrder(0, 50, 0);
         
         REQUIRE_THROWS(ins.getOrderById(0));
         REQUIRE_THROWS(ins.getLevelByIndex(0, S));
@@ -316,11 +316,11 @@ TEST_CASE("executing") {
 
     SECTION("execution qty too large") {
         ins.addOrder(o1);
-        REQUIRE_THROWS(ins.executeOrder(0, 60));
+        REQUIRE_THROWS(ins.executeOrder(0, 60, 0));
     }
 
     SECTION("execution id doesn't exist") {
         ins.addOrder(o1);
-        REQUIRE_THROWS(ins.executeOrder(51, 30));
+        REQUIRE_THROWS(ins.executeOrder(51, 30, 0));
     }
 }

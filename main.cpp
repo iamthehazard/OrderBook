@@ -81,7 +81,7 @@ int main() {
     std::thread readBufThread(readBufferTask);
 
     std::string type, data;
-    //for (int i = 0; i < 100000; i++) { std::cin >> type >> data; //use for partial reads (testing)
+    //for (int i = 0; i < 1000; i++) { std::cin >> type >> data; //use for partial reads (testing)
     while (std::cin >> type >> data) {
         auto j = json::parse(data);
 
@@ -98,9 +98,9 @@ int main() {
                 symbol
             });
         } else if (type == "OrderCanceled:") {
-            instrument->removeOrder(j["orderId"].template get<int>());
+            instrument->removeOrder(j["orderId"].template get<int>(), j["exchTime"].template get<timestamp>());
         } else if (type == "OrderExecuted:") {
-            instrument->executeOrder(j["orderId"].template get<int>(), j["execQty"].template get<int>());
+            instrument->executeOrder(j["orderId"].template get<int>(), j["execQty"].template get<int>(), j["exchTime"].template get<timestamp>());
         } else if (type == "Trade:") {
             //don't have to do anything yet
         } else {

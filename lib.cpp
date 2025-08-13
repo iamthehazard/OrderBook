@@ -291,57 +291,68 @@ class Instrument final {
         }*/
 
         void addOrder(Order const& order) {
+            bool L1Update = L1.price[order.side] == UNDEF_PRICE || order.price == L1.price[order.side] || sideBookComp<int>(order.side)(order.price, L1.price[order.side]);
+
             auto pl = getLevelPointer(order.price, order.side);
             pl->price = order.price;
             ordersById[order.id] = pl->orders.insert(pl->orders.end(), order);
             pl->volume += order.qty;
             pl->count++;
             
-            //if update occurs at or better than cur best
-            if (order.price == L1.price[order.side] || sideBookComp<int>(order.side)(order.price, L1.price[order.side])) callbackL1(order.exchTime);
+            if (L1Update) {
+                //std::cout << "add order L1 chg\n";
+                callbackL1(order.exchTime);
+            }
         }
 
-        void removeOrder(Orders::iterator it) { //honestly can be private
+        void removeOrder(Orders::iterator it, timestamp time) { //honestly can be private
             auto const& order = *it;
+            int orderId = order.id;
+            bool L1Update = L1.price[order.side] == UNDEF_PRICE || order.price == L1.price[order.side] || sideBookComp<int>(order.side)(order.price, L1.price[order.side]);
             auto pl = getLevelPointer(order.price, order.side);
 
-            if (pl->orders.size() == 1) {
-                bookSides[order.side].priceLevels.erase(order.price);
-                ordersById.erase(order.id);
-                return;
-            }
             pl->volume -= order.qty;
             pl->count--;
-            pl->orders.erase(it);
+            if (pl->count == 0) {
+                bookSides[order.side].priceLevels.erase(order.price); //maybe not ideal performance-wise; change getLevelPointer to iterator?
+            } else {
+                pl->orders.erase(it);
+            }
 
-            ordersById.erase(order.id);
-
+            ordersById.erase(orderId);
             //if update occurs at or better than cur best
-            if (order.price == L1.price[order.side] || sideBookComp<int>(order.side)(order.price, L1.price[order.side])) callbackL1(order.exchTime);
+            if (L1Update) {
+                //std::cout << "remove order L1 chg\n";
+                callbackL1(time);
+            }
         }
         
-        void removeOrder(int id) {
+        void removeOrder(int id, timestamp time) {
             auto it = getOrderPtr(id);
-            removeOrder(it);
+            removeOrder(it, time);
         }
 
         //one issue here: when a trade is executed at the bbo the L1 callback will be triggered twice (when in reality it should only trigger after the trade finishes)
         //although this kind of generally ties into issues that arise from the fact that we're not using packets (similar to the "aggressive orders that get immediately filled" but show up in our book history)
-        void executeOrder(Orders::iterator it, int execQty) {
+        void executeOrder(Orders::iterator it, int execQty, timestamp time) {
             auto const& order = *it;
             if (order.qty < execQty) throw std::invalid_argument{"execQty " + std::to_string(execQty) + " greater than order qty " + std::to_string(order.qty)};
-            if (order.qty == execQty) removeOrder(order.id);
+            if (order.qty == execQty) removeOrder(it, time);
             else {
+                bool L1Update = L1.price[order.side] == UNDEF_PRICE || order.price == L1.price[order.side] || sideBookComp<int>(order.side)(order.price, L1.price[order.side]);
                 it->qty -= execQty;
                 getLevelPointer(order.price, order.side)->volume -= execQty;
                 //if update occurs at or better than cur best
-                if (order.price == L1.price[order.side] || sideBookComp<int>(order.side)(order.price, L1.price[order.side])) callbackL1(order.exchTime);
+                if (L1Update) {
+                    //std::cout << "exec order L1 chg\n";
+                    callbackL1(time);
+                }
             }
         }
 
-        void executeOrder(int id, int execQty) {
+        void executeOrder(int id, int execQty, timestamp time) {
             auto it = getOrderPtr(id);
-            executeOrder(it, execQty);
+            executeOrder(it, execQty, time);
         }
 
         const Order& getOrderById(int id) {
