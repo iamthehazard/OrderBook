@@ -81,6 +81,7 @@ int main() {
     std::thread readBufThread(readBufferTask);
 
     std::string type, data;
+    std::string::iterator de;
     //for (int i = 0; i < 100000; i++) { std::cin >> type >> data; //use for partial reads (testing)
     while (std::cin >> type >> data) {
         /*auto j = json::parse(data);
@@ -88,12 +89,14 @@ int main() {
         std::string symbol = j["symbol"].template get<std::string>();
         auto instrument = &instruments[symbol];*/
 
+        de = data.end(); //2-3s faster, surprisingly
+
         if (type == "NewOrder:") {
-            Order o;
             int ct = 0;
-            for (auto it = data.begin(); it != data.end()+1; it++) {
+            Order o;
+            for (auto it = data.begin(); it != de+1; it++) {
                 auto begin = it;
-                while (it != data.end() && *it != ':' && *it != ',' && *it != '\"')
+                while (it != de && *it != ':' && *it != ',' && *it != '\"')
                     it++;
 
                 switch(ct) {
@@ -110,7 +113,7 @@ int main() {
                         o.qty = std::stoi(std::string(begin, it));
                         break;
                     case 24:
-                        o.side = sideMap.at(std::string(begin, it));
+                        o.side = std::string(begin, it) == "B" ? B : S;
                         break;
                     case 30:
                         o.symbol = std::string(begin, it);
@@ -125,9 +128,9 @@ int main() {
             timestamp time;
             int id;
             std::string symbol;
-            for (auto it = data.begin(); it != data.end()+1; it++) {
+            for (auto it = data.begin(); it != de+1; it++) {
                 auto begin = it;
-                while (it != data.end() && *it != ':' && *it != ',' && *it != '\"')
+                while (it != de && *it != ':' && *it != ',' && *it != '\"')
                     it++;
 
                 switch(ct) {
@@ -150,9 +153,9 @@ int main() {
             timestamp time;
             int id, execQty;
             std::string symbol;
-            for (auto it = data.begin(); it != data.end()+1; it++) {
+            for (auto it = data.begin(); it != de+1; it++) {
                 auto begin = it;
-                while (it != data.end() && *it != ':' && *it != ',' && *it != '\"')
+                while (it != de && *it != ':' && *it != ',' && *it != '\"')
                     it++;
 
                 switch(ct) {
