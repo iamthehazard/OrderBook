@@ -24,20 +24,37 @@ std::string toCsvLine(L1Datum L1d) {
 const size_t BUFFER_SIZE = 10;
 
 std::atomic<bool> doneWriting = false;
-semaphore numFilled(0, BUFFER_SIZE, &doneWriting);
-std::mutex buffer_manip;
+std::counting_semaphore<BUFFER_SIZE> numFilled{0};
+std::mutex bufferManip;
+std::binary_semaphore programDoneManip{1};
 
 RingBuffer<L1Datum> L1Buf(BUFFER_SIZE);
 std::ofstream L1Stream("l1.out");
 void readBufferTask() {
     while (true) {
-        if (numFilled.get_count() == 0 && doneWriting) return;
+        programDoneManip.acquire();
+        //std::cout << "hi\n";
         //std::cout << numFilled.get_count() << "\n";
-        numFilled.acquire();
-        if (numFilled.get_count() == 0 && doneWriting) return; //more poorly written code
+        if (doneWriting) {
+            numFilled.try_acquire(); //should pass, since we just incremented
+            programDoneManip.release(); //doesn't really matter where this goes, since in this branch we've already updated doneWriting
+            //std::cout << "a\n" << std::flush;
+            if (!numFilled.try_acquire()) return;
+            else numFilled.release();
+        } else { 
+            //std::cout << "b\n";
+            if (!numFilled.try_acquire()) {
+                programDoneManip.release();
+                //std::cout << "c\n" << std::flush;
+                //if doneWriting update comes in right here, we immediately acquire and return (equivalent to getting woken up)
+                numFilled.acquire();
+                if (doneWriting) return;
+            }
+            programDoneManip.release();
+        }
         L1Datum L1D;
         {
-            std::lock_guard<std::mutex> g(buffer_manip);
+            std::lock_guard<std::mutex> g(bufferManip);
             L1D = L1Buf.get();
         }
         //process L1D below
@@ -48,7 +65,7 @@ void readBufferTask() {
 
 void writeBuffer(L1Datum L1D) { //not a task; calls only when there's something to add
     {
-        std::lock_guard<std::mutex> g(buffer_manip);
+        std::lock_guard<std::mutex> g(bufferManip);
         L1Buf.add(L1D);
         //std::cout << toCsvLine(L1D) << "\n";
     }
@@ -81,8 +98,8 @@ int main() {
     std::thread readBufThread(readBufferTask);
 
     std::string type, data;
-    //for (int i = 0; i < 1000; i++) { std::cin >> type >> data; //use for partial reads (testing)
-    while (std::cin >> type >> data) {
+    for (int i = 0; i < 100000; i++) { std::cin >> type >> data; //use for partial reads (testing)
+    //while (std::cin >> type >> data) {
         auto j = json::parse(data);
 
         std::string symbol = j["symbol"].template get<std::string>();
@@ -108,8 +125,10 @@ int main() {
         }
     }
 
-    //doneWriting = true;
-    numFilled.exit();
+    programDoneManip.acquire();
+    doneWriting = true;
+    numFilled.release();
+    programDoneManip.release();
     readBufThread.join(); //should terminate quickly
 
     //just for sanity check

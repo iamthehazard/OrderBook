@@ -9,6 +9,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <atomic>
+#include <semaphore>
 
 //example lines (so I don't have to keep opening events.in)
 //NewOrder: {"exchTime":1725412500115000,"orderId":1591,"price":113.26,"qty":100,"recvTime":1725413100093350,"side":"S","symbol":"E"}
@@ -160,7 +161,7 @@ struct L1Datum {
 };
 
 //need to impl max value??
-class semaphore {
+/*class semaphore {
     std::mutex mutex;
     std::condition_variable condition;
     unsigned long count = 0;
@@ -207,7 +208,7 @@ class semaphore {
         unsigned long get_count() {
             return count;
         }
-};
+};*/
 
 template<class T>
 class RingBuffer {
@@ -222,16 +223,14 @@ class RingBuffer {
             if (numFilled == size) {
                 //overwrite
                 if (CERR_WHEN_INVALID) std::cerr << "Overwrote with no available capacity.\n";
-                buffer[writePos] = element;
-                writePos++;
+                buffer[writePos++] = element;
                 if (writePos == size) writePos = 0;
                 readPos++;
                 if (readPos == size) readPos = 0;
                 return false;
             }
-            buffer[writePos] = element;
+            buffer[writePos++] = element;
             numFilled++;
-            writePos++;
             if (writePos == size) writePos = 0; //should be faster than %
             return true;
         }
@@ -241,9 +240,8 @@ class RingBuffer {
                 if (CERR_WHEN_INVALID) std::cerr << "Tried to read with no elements.\n";
                 return T();
             }
-            T toReturn = buffer[readPos];
+            T toReturn = buffer[readPos++];
             numFilled--;
-            readPos++;
             if (readPos == size) readPos = 0;
             return toReturn;
         }
