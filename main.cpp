@@ -1,10 +1,10 @@
-#include "include/json.hpp"
+//#include "include/json.hpp"
 #include "lib.cpp"
 #include <atomic>
 #include <fstream>
 #include <thread>
 
-using json = nlohmann::json;
+//using json = nlohmann::json;
 
 std::vector<std::string> symbols;
 std::unordered_map<std::string, Instrument> instruments;
@@ -81,26 +81,97 @@ int main() {
     std::thread readBufThread(readBufferTask);
 
     std::string type, data;
-    //for (int i = 0; i < 1000; i++) { std::cin >> type >> data; //use for partial reads (testing)
+    //for (int i = 0; i < 100000; i++) { std::cin >> type >> data; //use for partial reads (testing)
     while (std::cin >> type >> data) {
-        auto j = json::parse(data);
+        /*auto j = json::parse(data);
 
         std::string symbol = j["symbol"].template get<std::string>();
-        auto instrument = &instruments[symbol];
+        auto instrument = &instruments[symbol];*/
 
         if (type == "NewOrder:") {
-            instrument->addOrder({
-                j["orderId"].template get<int>(),
-                j["exchTime"].template get<timestamp>(),
-                (int)lround(j["price"].template get<double>() * PRICE_FACTOR),
-                j["qty"].template get<int>(),
-                sideMap.at(j["side"].template get<std::string>()),
-                symbol
-            });
+            Order o;
+            int ct = 0;
+            for (auto it = data.begin(); it != data.end()+1; it++) {
+                auto begin = it;
+                while (it != data.end() && *it != ':' && *it != ',' && *it != '\"')
+                    it++;
+
+                switch(ct) {
+                    case 3:
+                        o.exchTime = std::stoll(std::string(begin, it));
+                        break;
+                    case 7:
+                        o.id = std::stoi(std::string(begin, it));
+                        break;
+                    case 11:
+                        o.price = (int) (std::stod(std::string(begin, it)) * 100000);
+                        break;
+                    case 15:
+                        o.qty = std::stoi(std::string(begin, it));
+                        break;
+                    case 24:
+                        o.side = sideMap.at(std::string(begin, it));
+                        break;
+                    case 30:
+                        o.symbol = std::string(begin, it);
+                        break;
+                }
+                ct++;
+            }
+
+            instruments[o.symbol].addOrder(o);
         } else if (type == "OrderCanceled:") {
-            instrument->removeOrder(j["orderId"].template get<int>(), j["exchTime"].template get<timestamp>());
+            int ct = 0;
+            timestamp time;
+            int id;
+            std::string symbol;
+            for (auto it = data.begin(); it != data.end()+1; it++) {
+                auto begin = it;
+                while (it != data.end() && *it != ':' && *it != ',' && *it != '\"')
+                    it++;
+
+                switch(ct) {
+                    case 3:
+                        time = std::stoll(std::string(begin, it));
+                        break;
+                    case 7:
+                        id = std::stoi(std::string(begin, it));
+                        break;
+                    case 16:
+                        symbol = std::string(begin, it);
+                        break;
+                }
+                ct++;
+            }
+            instruments[symbol].removeOrder(id, time);
         } else if (type == "OrderExecuted:") {
-            instrument->executeOrder(j["orderId"].template get<int>(), j["execQty"].template get<int>(), j["exchTime"].template get<timestamp>());
+            //{"exchTime":1725413100000000,"execQty":50,"leavesQty":0,"orderId":78849,"recvTime":1725413100693106,"symbol":"F"}
+            int ct = 0;
+            timestamp time;
+            int id, execQty;
+            std::string symbol;
+            for (auto it = data.begin(); it != data.end()+1; it++) {
+                auto begin = it;
+                while (it != data.end() && *it != ':' && *it != ',' && *it != '\"')
+                    it++;
+
+                switch(ct) {
+                    case 3:
+                        time = std::stoll(std::string(begin, it));
+                        break;
+                    case 7:
+                        execQty = std::stoi(std::string(begin, it));
+                        break;
+                    case 15:
+                        id = std::stoi(std::string(begin, it));
+                        break;
+                    case 24:
+                        symbol = std::string(begin, it);
+                        break;
+                }
+                ct++;
+            }
+            instruments[symbol].executeOrder(id, execQty, time);
         } else if (type == "Trade:") {
             //don't have to do anything yet
         } else {
@@ -124,5 +195,5 @@ int main() {
     //note that reading 100k lines takes ~3500ms
     //reading 100k lines AND getting components takes ~3800ms
     //so actual order book operations only take ~200ms
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+    //std::this_thread::sleep_for(std::chrono::seconds(1));
 }

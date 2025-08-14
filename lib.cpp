@@ -362,7 +362,7 @@ class Instrument final {
         const PriceLevel& getLevelByIndex(std::size_t index, Side side) {
             if (bookSides[side].priceLevels.size() > index) {
                 auto it = bookSides[side].priceLevels.begin();
-                std::advance(it, index);
+                if (index != 0) std::advance(it, index); //performance optimization?
                 return it->second;
             }
             throw std::invalid_argument{"No " + to_string(side) + " level at index " + std::to_string(index)};

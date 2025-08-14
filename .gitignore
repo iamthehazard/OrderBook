@@ -4,3 +4,7 @@ lib
 test
 .vscode
 l1.out
+main.prof
+inputbenchmarks
+inputbenchmarks.cpp
+output.svg
