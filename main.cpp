@@ -21,55 +21,55 @@ std::string toCsvLine(L1Datum L1d) {
     }
 }
 
-const size_t BUFFER_SIZE = 10;
+//size 10 will overflow sometimes
+const size_t BUFFER_SIZE = 1000;
 
 std::atomic<bool> doneWriting = false;
 std::counting_semaphore<BUFFER_SIZE> numFilled{0};
 std::mutex bufferManip;
 std::binary_semaphore programDoneManip{1};
 
-RingBuffer<L1Datum> L1Buf(BUFFER_SIZE);
+RingBuffer<L1Datum> L1Buf(BUFFER_SIZE, false); //set to true for testing
 std::ofstream L1Stream("l1.out");
+
+void processL1(L1Datum L1D) {
+    L1Stream << toCsvLine(L1D) << "\n";
+}
+
 void readBufferTask() {
     while (true) {
-        programDoneManip.acquire();
-        //std::cout << "hi\n";
-        //std::cout << numFilled.get_count() << "\n";
-        if (doneWriting) {
-            numFilled.try_acquire(); //should pass, since we just incremented
-            programDoneManip.release(); //doesn't really matter where this goes, since in this branch we've already updated doneWriting
-            //std::cout << "a\n" << std::flush;
-            if (!numFilled.try_acquire()) return;
-            else numFilled.release();
-        } else { 
-            //std::cout << "b\n";
-            if (!numFilled.try_acquire()) {
-                programDoneManip.release();
-                //std::cout << "c\n" << std::flush;
-                //if doneWriting update comes in right here, we immediately acquire and return (equivalent to getting woken up)
-                numFilled.acquire();
-                if (doneWriting) return;
-            }
-            programDoneManip.release();
-        }
         L1Datum L1D;
-        {
-            std::lock_guard<std::mutex> g(bufferManip);
-            L1D = L1Buf.get();
+        programDoneManip.acquire();
+        if (doneWriting) {
+            programDoneManip.release();
+            //because writeBuffer runs in the main thread, we can be sure that everything has been written to buffer already
+            {
+                std::lock_guard<std::mutex> g(bufferManip);  
+                while (L1Buf.count()) {
+                    processL1(L1Buf.get());
+                }
+                return;
+            }
+        } else {
+            programDoneManip.release();
+            numFilled.acquire();
+            {
+                std::lock_guard<std::mutex> g(bufferManip);
+                if (doneWriting && L1Buf.count() == 0) return;
+                //if (!doneWriting && L1Buf.count() == 0) std::cerr << "shouldn't happen\n";
+                processL1(L1Buf.get());
+            }
         }
-        //process L1D below
-
-        L1Stream << toCsvLine(L1D) << "\n";
     }
 }
 
 void writeBuffer(L1Datum L1D) { //not a task; calls only when there's something to add
     {
         std::lock_guard<std::mutex> g(bufferManip);
-        L1Buf.add(L1D);
+        if (L1Buf.add(L1D)) numFilled.release(); //should be fine?
         //std::cout << toCsvLine(L1D) << "\n";
     }
-    numFilled.release();
+    //numFilled.release(); //not sure what happens when releasing past max
 }
 
 int main() {
@@ -98,8 +98,8 @@ int main() {
     std::thread readBufThread(readBufferTask);
 
     std::string type, data;
-    for (int i = 0; i < 100000; i++) { std::cin >> type >> data; //use for partial reads (testing)
-    //while (std::cin >> type >> data) {
+    //for (int i = 0; i < 3; i++) { std::cin >> type >> data; //use for partial reads (testing)
+    while (std::cin >> type >> data) {
         auto j = json::parse(data);
 
         std::string symbol = j["symbol"].template get<std::string>();

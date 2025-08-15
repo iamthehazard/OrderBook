@@ -160,56 +160,6 @@ struct L1Datum {
     std::string symbol;
 };
 
-//need to impl max value??
-/*class semaphore {
-    std::mutex mutex;
-    std::condition_variable condition;
-    unsigned long count = 0;
-    unsigned long maxCount;
-    std::atomic<bool> *exitFlag;
-
-    public:
-        semaphore(unsigned long ct, unsigned long mct, std::atomic<bool> *ef) : count(ct), maxCount(mct), exitFlag(ef) {}
-
-        //this is implemented quite confusingly
-        void exit() {
-            *exitFlag = true;
-            std::lock_guard<decltype(mutex)> lock(mutex);
-            count = 1; //commenting out this line breaks things
-            condition.notify_one();
-        }
-
-        void release() {
-            std::lock_guard<decltype(mutex)> lock(mutex);
-            if (count != maxCount) count++;
-            condition.notify_one();
-        }
-
-        void acquire() {
-            std::unique_lock<decltype(mutex)> lock(mutex);
-            while (!count) {
-                //std::cout << "waiting..." << count << "\n";
-                condition.wait(lock);
-                //std::cout << count << " ok\n";
-                if (*exitFlag) break;
-            }
-            count--;
-        }
-
-        bool try_acquire() {
-            std::lock_guard<decltype(mutex)> lock(mutex);
-            if (count) {
-                count--;
-                return true;
-            }
-            return false;
-        }
-
-        unsigned long get_count() {
-            return count;
-        }
-};*/
-
 template<class T>
 class RingBuffer {
     public:
@@ -217,12 +167,12 @@ class RingBuffer {
 
         RingBuffer(size_t sz) : size(sz), buffer(sz) {}
 
-        RingBuffer(int sz, bool toCerr) : size(sz), buffer(sz), CERR_WHEN_INVALID(toCerr) {}
+        RingBuffer(int sz, bool toLog) : size(sz), buffer(sz), LOG_WHEN_INVALID(toLog) {}
 
         bool add(T element) {
             if (numFilled == size) {
                 //overwrite
-                if (CERR_WHEN_INVALID) std::cerr << "Overwrote with no available capacity.\n";
+                if (LOG_WHEN_INVALID) std::clog << "Overwrote with no available capacity.\n";
                 buffer[writePos++] = element;
                 if (writePos == size) writePos = 0;
                 readPos++;
@@ -237,13 +187,17 @@ class RingBuffer {
 
         T get() {
             if (numFilled == 0) {
-                if (CERR_WHEN_INVALID) std::cerr << "Tried to read with no elements.\n";
+                if (LOG_WHEN_INVALID) std::clog << "Tried to read with no elements.\n";
                 return T();
             }
             T toReturn = buffer[readPos++];
             numFilled--;
             if (readPos == size) readPos = 0;
             return toReturn;
+        }
+
+        size_t count() {
+            return numFilled;
         }
     private:
         size_t size;
@@ -252,7 +206,7 @@ class RingBuffer {
         size_t readPos, writePos = 0;
         size_t numFilled = 0;
 
-        bool CERR_WHEN_INVALID = false; //can turn off for performance reasons/on for debug?
+        bool LOG_WHEN_INVALID = false; //can turn off for performance reasons/on for debug?
 };
 
 class Instrument final {
