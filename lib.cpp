@@ -172,7 +172,7 @@ class RingBuffer {
         bool add(T element) {
             if (numFilled == size) {
                 //overwrite
-                if (LOG_WHEN_INVALID) std::clog << "Overwrote with no available capacity.\n";
+                if (LOG_WHEN_INVALID) std::clog << "Overwrote with no available capacity.\n"; //ideally this doesn't happen; I don't think this breaks the code if it does, just lose some output
                 buffer[writePos++] = element;
                 if (writePos == size) writePos = 0;
                 readPos++;
@@ -344,6 +344,8 @@ class Instrument final {
         L1Datum L1;
         void(*callback)(L1Datum) = [](auto x) {}; //empty fn
 
+        //will create level if doesn't already exist
+        //this is intended - works for addOrder, and when removing/executing the order should already exist
         PriceLevel* getLevelPointer(int price, Side side) {
             return &bookSides[side].priceLevels[price];
         }
