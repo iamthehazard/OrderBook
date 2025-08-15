@@ -26,11 +26,6 @@ enum Side {
     S = 1
 };
 
-const std::map<std::string, Side> sideMap= {
-    {"B", B},
-    {"S", S}
-};
-
 std::string to_string(Side s) {
     return s ? "buy" : "sell";
 }
@@ -314,8 +309,18 @@ class Instrument final {
         const PriceLevel& getLevelByIndex(std::size_t index, Side side) {
             if (bookSides[side].priceLevels.size() > index) {
                 auto it = bookSides[side].priceLevels.begin();
-                std::advance(it, index);
+                if (index != 0) std::advance(it, index); //performance optimization?
                 return it->second;
+            }
+            throw std::invalid_argument{"No " + to_string(side) + " level at index " + std::to_string(index)};
+        }
+
+        //performance friendly
+        const std::tuple<int, int, int> getLevelDataByIndex(std::size_t index, Side side) {
+            if (bookSides[side].priceLevels.size() > index) {
+                auto it = bookSides[side].priceLevels.begin();
+                if (index != 0) std::advance(it, index); //performance optimization?
+                return {it->second.price, it->second.volume, it->second.count};
             }
             throw std::invalid_argument{"No " + to_string(side) + " level at index " + std::to_string(index)};
         }
@@ -325,6 +330,8 @@ class Instrument final {
             if (it == bookSides[side].priceLevels.end()) throw std::invalid_argument{"No " + to_string(side) + " level at " + std::to_string((double) price / PRICE_FACTOR)};
             return it->second;
         }
+
+        //TODO: impl getLevelDataByPrice?
 
         void setCallback(void(*cb)(L1Datum)) {
             callback = cb;
@@ -358,25 +365,25 @@ class Instrument final {
 
         void callbackL1(timestamp t) {
             //roll into same
-            PriceLevel bestBid, bestAsk;
+            std::tuple<int, int, int> bestBid, bestAsk;
             try {
-                bestBid = getLevelByIndex(0, B);
+                bestBid = getLevelDataByIndex(0, B);
             } catch(std::invalid_argument e) {
-                bestBid = {UNDEF_PRICE};
+                bestBid = {UNDEF_PRICE, 0, 0};
             }
             try {
-                bestAsk = getLevelByIndex(0, S);
+                bestAsk = getLevelDataByIndex(0, S);
             } catch(std::invalid_argument e) {
-                bestAsk = {UNDEF_PRICE};
+                bestAsk = {UNDEF_PRICE, 0, 0};
             }
             L1 = {
                 t,
-                bestBid.price,
-                bestAsk.price,
-                bestBid.volume,
-                bestAsk.volume,
-                bestBid.count,
-                bestAsk.count,
+                std::get<0>(bestBid),
+                std::get<0>(bestAsk),
+                std::get<1>(bestBid),
+                std::get<1>(bestAsk),
+                std::get<2>(bestBid),
+                std::get<2>(bestAsk),
                 symbol
             };
             
