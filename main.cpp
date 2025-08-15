@@ -205,11 +205,8 @@ int main() {
     programDoneManip.release();
     readBufThread.join(); //should terminate quickly
 
-    //just for sanity check
-    //std::cout << (double) instruments["B"].getBestOffer(B) / PRICE_FACTOR << " " << (double) instruments["B"].getBestOffer(S) / PRICE_FACTOR << "\n";
-    //std::cout << instruments["J"].getLevelByIndex(0, B).price << " " << instruments["J"].getLevelByIndex(0, S).volume << " " << instruments["J"].getLevelByIndex(0, S).count << "\n";
-    //std::cout << instruments["J"].getLevelByPrice(1160650, side["B"]) << "\n";
-    //std::cout << instruments["J"].getOrderById(2893934) << "\n";
+    //just for demonstration
+    //std::cout << instruments["B"].getLevelByIndex(1, S) << "\n";
     
     auto end = std::chrono::steady_clock::now();
     std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " ms \n";

@@ -7,4 +7,4 @@ l1.out
 main.prof
 inputbenchmarks
 inputbenchmarks.cpp
-*.svg
+# *.svg
